@@ -839,6 +839,9 @@ elif PAGE == "💬 Ask TraffiCast":
     secret_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
     api_key = st.text_input("Google Gemini API Key (Optional override)", value=secret_key, type="password")
     
+    if api_key and not api_key.startswith("AIzaSy"):
+        st.warning("⚠️ Warning: Your Gemini API key does not start with 'AIzaSy'. Google Gemini API keys usually start with 'AIzaSy'. Please verify that you have not pasted a MapmyIndia/Mappls or other service key by mistake.")
+
     examples = [
         "Which corridors have the highest closure rate?",
         "Compare East Zone vs West Zone risk profile",
@@ -877,7 +880,6 @@ elif PAGE == "💬 Ask TraffiCast":
                 try:
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
                     sys_prompt = f"""
                     You are the Chief Traffic Planner AI for the Bengaluru Traffic Police. 
@@ -888,7 +890,22 @@ elif PAGE == "💬 Ask TraffiCast":
                     {context}
                     """
                     
-                    response = model.generate_content(f"{sys_prompt}\n\nUser Question: {q}")
+                    # Try a few common model names in case of API version/model availability differences
+                    model_names = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.5-flash', 'gemini-pro']
+                    response = None
+                    last_err = None
+                    for m_name in model_names:
+                        try:
+                            model = genai.GenerativeModel(m_name)
+                            response = model.generate_content(f"{sys_prompt}\n\nUser Question: {q}")
+                            break
+                        except Exception as ex:
+                            last_err = ex
+                            continue
+                            
+                    if response is None:
+                        raise last_err or Exception("All Gemini model generation attempts failed.")
+                        
                     st.markdown("### 🤖 Strategist Briefing")
                     st.write(response.text)
                     st.success("Grounded via Google Gemini RAG Model ✔")
