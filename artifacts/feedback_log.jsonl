@@ -1,0 +1,2 @@
+{"ts": "2026-06-20T10:19:33.196040", "cause": "Debris", "pred_closure": 0.55, "pred_long": 0.5, "actual_duration_min": 120, "actual_closure": false, "closure_correct": false, "long_correct": true}
+{"ts": "2026-06-20T11:07:45.353995", "cause": "Debris", "pred_closure": 0.5, "pred_long": 0.5, "actual_duration_min": 120, "actual_closure": false, "closure_correct": true, "long_correct": true}
