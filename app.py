@@ -314,18 +314,26 @@ if PAGE == "Command Center":
     st.caption("Live operating picture — every event scored for impact in real time.")
 
     # Unified headline metric: Event Impact Score (EIS)
-    st.markdown(
-        f"""
-        <div style="background: linear-gradient(135deg, #161c2d 0%, #0d1117 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 25px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">
-            <div style="font-size: 13px; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">Unified Fleet Event Impact Score (EIS)</div>
-            <div style="font-size: 64px; color: #f8fafc; font-weight: 800; margin: 5px 0; font-family: 'Outfit', sans-serif; text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);">{scored.impact_score.mean():.1f} <span style="font-size: 24px; color: #64748b; font-weight: 500;">/ 100</span></div>
-            <div style="font-size: 14px; color: #94a3b8; font-weight: 400; line-height: 1.6; max-width: 650px; margin: 10px auto 0 auto; font-family: 'Outfit', sans-serif;">
-                A composite indicator combining <b>road closure probability, severity, predicted duration,</b> and <b>local bottleneck density</b>.
-            </div>
+    eis_val = scored.impact_score.mean()
+    if eis_val >= 76:
+        eis_color, eis_band = "#d11149", "🔴 CRITICAL RISK"
+    elif eis_val >= 51:
+        eis_color, eis_band = "#f17105", "🟠 HIGH RISK"
+    elif eis_val >= 26:
+        eis_color, eis_band = "#e6c229", "🟡 MODERATE RISK"
+    else:
+        eis_color, eis_band = "#1a8fe3", "🟢 LOW RISK"
+
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #161c2d 0%, #0d1117 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 25px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15);">
+        <div style="font-size: 13px; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">Unified Fleet Event Impact Score (EIS)</div>
+        <div style="font-size: 64px; color: {eis_color}; font-weight: 800; margin: 5px 0; font-family: 'Outfit', sans-serif;">{eis_val:.1f} <span style="font-size: 24px; color: #64748b; font-weight: 500;">/ 100</span></div>
+        <div style="font-size: 18px; color: {eis_color}; font-weight: 700; margin: 8px 0;">{eis_band}</div>
+        <div style="font-size: 14px; color: #94a3b8; max-width: 650px; margin: 10px auto 0;">
+            Combining road closure probability, severity, predicted duration, and local bottleneck density.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total events", f"{len(scored):,}")
