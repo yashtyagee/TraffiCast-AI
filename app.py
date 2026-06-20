@@ -395,6 +395,11 @@ if PAGE == "Command Center":
         heat_df = heat_df[heat_df.event_cause == heat_cause]
         
     if len(heat_df) > 0:
+        # Derive dow and hour from the start datetime column
+        if 'dow' not in heat_df.columns:
+            heat_df['dow'] = heat_df['start'].dt.dayofweek
+        if 'hour' not in heat_df.columns:
+            heat_df['hour'] = heat_df['start'].dt.hour
         # Group by DOW (0-6) and Hour (0-23)
         grid = heat_df.groupby(['dow', 'hour'])['impact_score'].mean().unstack(fill_value=0)
         grid = grid.reindex(index=range(7), columns=range(24), fill_value=0)
