@@ -198,8 +198,16 @@ def train_all(df: pd.DataFrame) -> dict:
     bundle['hotspots'] = hot
 
     # ---- zone x weekday expected load ----
+    try:
+        ist_dates = R['start'].dt.tz_convert('Asia/Kolkata').dt.date
+    except Exception:
+        try:
+            ist_dates = R['start'].dt.tz_convert('Asia/Calcutta').dt.date
+        except Exception:
+            ist_dates = (R['start'] + datetime.timedelta(hours=5, minutes=30)).dt.date
+
     ts = (R.dropna(subset=['zone'])
-            .assign(d=R['start'].dt.tz_convert('Asia/Calcutta').dt.date)
+            .assign(d=ist_dates)
             .groupby(['zone','d']).size().rename('events').reset_index())
     ts['d'] = pd.to_datetime(ts['d']); ts['dow'] = ts['d'].dt.dayofweek
     bundle['zone_dow'] = ts.groupby(['zone','dow'])['events'].mean().rename('expected').reset_index()
