@@ -67,8 +67,15 @@ PSTATIONS = sorted([p for p in raw["police_station"].dropna().unique()])
 # --------------------------------------------------------------------------- #
 #  Sidebar nav
 # --------------------------------------------------------------------------- #
-st.sidebar.title("TraffiCast AI")
-st.sidebar.caption("Event-Driven Congestion Intelligence")
+st.sidebar.markdown(
+    """
+    <div style="text-align: left; padding: 10px 0px 20px 0px;">
+        <span style="font-size: 30px; font-weight: 800; background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-family: 'Outfit', sans-serif;">🚦 TraffiCast AI</span>
+        <div style="font-size: 11px; color: #94a3b8; font-weight: 600; margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; font-family: 'Outfit', sans-serif;">Congestion Command Center</div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 PAGE = st.sidebar.radio("Navigate", [
     "Command Center",
     "Simulate Event (What-if)",
@@ -90,7 +97,7 @@ st.sidebar.caption(f"ML backend: {bundle['backend']}")
 # Custom CSS Injection for Hackathon-Winning Aesthetics
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Outfit', sans-serif;
@@ -104,42 +111,46 @@ st.markdown("""
     
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background-color: #111520 !important;
+        background-color: #0d1117 !important;
         border-right: 1px solid #1e2538;
     }
     
     /* Premium Metric Card Styling */
     div[data-testid="metric-container"] {
-        background: linear-gradient(135deg, #161c2d 0%, #1e263d 100%);
-        border: 1px solid #283352;
-        border-radius: 12px;
-        padding: 12px 18px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        transition: transform 0.2s ease, border-color 0.2s ease;
+        background: linear-gradient(135deg, #111520 0%, #1e263d 100%) !important;
+        border: 1px solid #283352 !important;
+        border-radius: 12px !important;
+        padding: 14px 20px !important;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
+        transition: transform 0.2s ease, border-color 0.2s ease !important;
     }
     
     div[data-testid="metric-container"]:hover {
-        transform: translateY(-2px);
-        border-color: #3b82f6;
+        transform: translateY(-2px) !important;
+        border-color: #3b82f6 !important;
     }
     
     div[data-testid="metric-container"] label {
         color: #94a3b8 !important;
-        font-weight: 500 !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
     }
     
     div[data-testid="metric-container"] div[data-testid="stMetricValue"] {
-        font-size: 26px !important;
+        font-size: 28px !important;
         font-weight: 700 !important;
         color: #f8fafc !important;
     }
     
     /* Styled Containers & Cards */
     div.stAlert {
-        background-color: #161c2d !important;
+        background-color: #111520 !important;
         border: 1px solid #283352 !important;
-        color: #e2e8f0 !important;
+        color: #cbd5e1 !important;
         border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
     
     .stTabs [data-baseweb="tab-list"] {
@@ -150,8 +161,10 @@ st.markdown("""
         background-color: #111520;
         border: 1px solid #1e2538;
         border-radius: 8px 8px 0px 0px;
-        padding: 8px 16px;
+        padding: 10px 20px;
         color: #94a3b8;
+        font-weight: 600;
+        transition: all 0.2s ease;
     }
     
     .stTabs [aria-selected="true"] {
@@ -159,11 +172,77 @@ st.markdown("""
         border-color: #3b82f6 !important;
         color: #f8fafc !important;
     }
+    
+    /* Expander Styling */
+    .streamlit-expanderHeader {
+        background-color: #111520 !important;
+        border: 1px solid #1e2538 !important;
+        border-radius: 10px !important;
+        color: #e2e8f0 !important;
+        font-weight: 600 !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: #111520 !important;
+        border-left: 1px solid #1e2538 !important;
+        border-right: 1px solid #1e2538 !important;
+        border-bottom: 1px solid #1e2538 !important;
+        border-radius: 0px 0px 10px 10px !important;
+    }
+
+    /* Buttons Styling */
+    div.stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 10px 24px !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+        transition: all 0.2s ease !important;
+        width: 100%;
+    }
+    
+    div.stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4) !important;
+    }
+
+    /* Form and selectbox widgets styling */
+    div[data-baseweb="select"] {
+        background-color: #111520 !important;
+        border: 1px solid #1e2538 !important;
+        border-radius: 8px !important;
+    }
+    
+    div[role="listbox"] {
+        background-color: #111520 !important;
+        border: 1px solid #1e2538 !important;
+    }
+
+    div[data-baseweb="input"] {
+        background-color: #111520 !important;
+        border: 1px solid #1e2538 !important;
+        border-radius: 8px !important;
+    }
+    
+    input {
+        color: #f8fafc !important;
+    }
+    
+    /* Headers gradient styling */
+    h1, h2, h3 {
+        font-weight: 700 !important;
+        background: linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def tier_badge(tier):
-    return f"<span style='background:{TIER_COLOR[tier]};color:white;padding:2px 10px;border-radius:10px;font-weight:600'>{tier}</span>"
+    bg_color = TIER_COLOR.get(tier, "#3b82f6")
+    return f"<span style='background: {bg_color}22; color: {bg_color}; border: 1px solid {bg_color}; padding: 3px 12px; border-radius: 12px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;'>{tier}</span>"
 
 def haversine_km(a, b):
     (la1, lo1), (la2, lo2) = a, b
@@ -237,11 +316,11 @@ if PAGE == "Command Center":
     # Unified headline metric: Event Impact Score (EIS)
     st.markdown(
         f"""
-        <div style="background: linear-gradient(135deg, #111520 0%, #1e263d 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 22px; margin-bottom: 25px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
-            <div style="font-size: 14px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 2px;">Unified Fleet Event Impact Score (EIS)</div>
-            <div style="font-size: 56px; color: #3b82f6; font-weight: 800; margin: 8px 0; font-family: 'Outfit', sans-serif;">{scored.impact_score.mean():.1f} <span style="font-size: 20px; color: #64748b; font-weight: 500;">/ 100</span></div>
-            <div style="font-size: 13px; color: #94a3b8; font-weight: 400; line-height: 1.6; max-width: 600px; margin: 0 auto;">
-                A single unified metric combining road closure probability, long blockage risk (>3h), severity index, estimated duration, and localized event density.
+        <div style="background: linear-gradient(135deg, #161c2d 0%, #0d1117 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 25px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">
+            <div style="font-size: 13px; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">Unified Fleet Event Impact Score (EIS)</div>
+            <div style="font-size: 64px; color: #f8fafc; font-weight: 800; margin: 5px 0; font-family: 'Outfit', sans-serif; text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);">{scored.impact_score.mean():.1f} <span style="font-size: 24px; color: #64748b; font-weight: 500;">/ 100</span></div>
+            <div style="font-size: 14px; color: #94a3b8; font-weight: 400; line-height: 1.6; max-width: 650px; margin: 10px auto 0 auto; font-family: 'Outfit', sans-serif;">
+                A composite indicator combining <b>road closure probability, severity, predicted duration,</b> and <b>local bottleneck density</b>.
             </div>
         </div>
         """,
