@@ -75,19 +75,19 @@ PSTATIONS = sorted([p for p in raw["police_station"].dropna().unique()])
 # --------------------------------------------------------------------------- #
 #  Sidebar nav
 # --------------------------------------------------------------------------- #
-st.sidebar.title("🚦 TraffiCast AI")
+st.sidebar.title("TraffiCast AI")
 st.sidebar.caption("Event-Driven Congestion Intelligence")
 PAGE = st.sidebar.radio("Navigate", [
-    "🛰️ Command Center",
-    "🎯 Simulate Event (What-if)",
-    "🌊 Congestion Contagion (Hawkes)",
-    "🚓 Resource Optimizer",
-    "🧭 Diversion Planner",
-    "📍 Hotspot Intelligence",
-    "💬 Ask TraffiCast",
-    "🧠 AGI Urban Planner",
-    "🔁 Post-Event Learning",
-    "🔬 Model Trust & Performance",
+    "Command Center",
+    "Simulate Event (What-if)",
+    "Congestion Contagion (Hawkes)",
+    "Resource Optimizer",
+    "Diversion Planner",
+    "Hotspot Intelligence",
+    "Ask TraffiCast",
+    "AGI Urban Planner",
+    "Post-Event Learning",
+    "Model Trust & Performance",
 ])
 st.sidebar.divider()
 st.sidebar.metric("Events in dataset", f"{len(raw):,}")
@@ -177,8 +177,8 @@ def tier_badge(tier):
 # =========================================================================== #
 #  1 · COMMAND CENTER
 # =========================================================================== #
-if PAGE == "🛰️ Command Center":
-    st.title("🛰️ Command Center")
+if PAGE == "Command Center":
+    st.title("Command Center")
     st.caption("Live operating picture — every event scored for impact in real time.")
 
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -293,8 +293,8 @@ if PAGE == "🛰️ Command Center":
 # =========================================================================== #
 #  2 · SIMULATE EVENT
 # =========================================================================== #
-elif PAGE == "🎯 Simulate Event (What-if)":
-    st.title("🎯 Simulate Event")
+elif PAGE == "Simulate Event (What-if)":
+    st.title("Simulate Event")
     st.caption("Enter a planned or reported event → get its forecast impact, prescriptive recommendations, and similar historical precedents.")
 
     with st.form("sim"):
@@ -333,7 +333,7 @@ elif PAGE == "🎯 Simulate Event (What-if)":
         k4.metric("Severity", plan["severity"])
         k5.metric("Est. Clearance Time", f"{plan.get('predicted_duration_min', 0.0):.0f} min")
 
-        st.subheader("🚓 Recommended deployment")
+        st.subheader("Recommended deployment")
         r1, r2, r3, r4 = st.columns(4)
         r1.metric("Officers", plan["officers"])
         r2.metric("Barricades", plan["barricades"])
@@ -342,9 +342,9 @@ elif PAGE == "🎯 Simulate Event (What-if)":
 
         # Preset tabs for advanced outputs
         t_cf, t_sim, t_shap = st.tabs([
-            "🛠️ Counterfactual Decision Prescriptions", 
-            "📋 Historical Similarity Precedents", 
-            "🧠 SHAP Decision Explanations"
+            "Counterfactual Decision Prescriptions", 
+            "Historical Similarity Precedents", 
+            "SHAP Decision Explanations"
         ])
         
         with t_cf:
@@ -355,7 +355,7 @@ elif PAGE == "🎯 Simulate Event (What-if)":
             # Format display
             cf_df.columns = ["Recommended Action", "New Est. Duration (m)", "Saved Duration (m)", "New Closure Prob", "Closure Reduction", "Impact Level"]
             st.dataframe(cf_df.style.background_gradient(subset=["Saved Duration (m)"], cmap="Greens"), use_container_width=True)
-            st.info("💡 Upstream diversions and early crane recovery are calculated dynamically by changing the ML model inputs.")
+            st.info("Upstream diversions and early crane recovery are calculated dynamically by changing the ML model inputs.")
 
         with t_sim:
             st.subheader("Historical Incident Precedents")
@@ -366,7 +366,7 @@ elif PAGE == "🎯 Simulate Event (What-if)":
             st.dataframe(sim_df, use_container_width=True)
 
         with t_shap:
-            st.subheader("🧠 Spatiotemporal Feature Contribution")
+            st.subheader("Spatiotemporal Feature Contribution")
             exp_model = st.radio("Explain model", ["Road Closure Model", "Long-Blocker Model", "Duration Regressor"], horizontal=True)
             model_key_map = {"Road Closure Model": "closure", "Long-Blocker Model": "longblock", "Duration Regressor": "duration"}
             
@@ -383,12 +383,12 @@ elif PAGE == "🎯 Simulate Event (What-if)":
 # =========================================================================== #
 #  🌊 CONGESTION CONTAGION (HAWKES)
 # =========================================================================== #
-elif PAGE == "🌊 Congestion Contagion (Hawkes)":
-    st.title("🌊 Spatiotemporal Congestion Contagion Emulator")
+elif PAGE == "Congestion Contagion (Hawkes)":
+    st.title("Spatiotemporal Congestion Contagion Emulator")
     st.caption("Epidemiological modeling of gridlock spread (Hawkes Point Process). Calculates incident R0 and recommends Upstream Quarantine.")
     
-    st.markdown("### 🔬 Epidemiological Incident Quarantine (EIQ)")
-    st.info("💡 Gridlock is contagious. EIQ identifies upstream chokepoints 1.5 - 3km away to barricade, preventing cars from entering the infected congestion envelope.")
+    st.markdown("### Epidemiological Incident Quarantine (EIQ)")
+    st.info("Gridlock is contagious. EIQ identifies upstream chokepoints 1.5 - 3km away to barricade, preventing cars from entering the infected congestion envelope.")
     
     # Input event parameters to calculate contagion ripple
     c1, c2, c3 = st.columns(3)
@@ -400,7 +400,7 @@ elif PAGE == "🌊 Congestion Contagion (Hawkes)":
     c_hour = c4.slider("Hour of Day", 0, 23, 18)
     c_dow = c5.slider("Day of Week (0=Mon, 6=Sun)", 0, 6, 4)
     
-    if st.button("🌊 Emulate Contagion Ripple & EIQ", use_container_width=True):
+    if st.button("Emulate Contagion Ripple & EIQ", use_container_width=True):
         res = M.compute_contagion_ripple(c_lat, c_lon, c_hour, c_dow)
         
         # Display R0 and description
@@ -412,7 +412,7 @@ elif PAGE == "🌊 Congestion Contagion (Hawkes)":
         st.write(res["description"])
         
         # Render contagion map
-        st.subheader("🗺️ Spatiotemporal Infection Envelope")
+        st.subheader("Spatiotemporal Infection Envelope")
         fig = go.Figure()
         
         # Patient Zero
@@ -439,7 +439,7 @@ elif PAGE == "🌊 Congestion Contagion (Hawkes)":
             mode="markers",
             marker=dict(size=16, color="green"),
             text=[p["label"] for p in quarantine_points],
-            name="🚧 Upstream Quarantine Intercepts"
+            name="Upstream Quarantine Intercepts"
         ))
         
         # Ripple Points representing intensity
@@ -473,11 +473,11 @@ elif PAGE == "🌊 Congestion Contagion (Hawkes)":
 # =========================================================================== #
 #  3 · RESOURCE OPTIMIZER
 # =========================================================================== #
-elif PAGE == "🚓 Resource Optimizer":
-    st.title("🚓 Resource Deployment Optimizer")
+elif PAGE == "Resource Optimizer":
+    st.title("Resource Deployment Optimizer")
     st.caption("Allocate a limited officer pool across many simultaneous events — impact-first.")
 
-    tab1, tab2, tab3 = st.tabs(["🚓 Live Allocation Planner", "📅 Shift Pre-Deployment Planner", "⚡ Bipartite Manpower Dispatcher"])
+    tab1, tab2, tab3 = st.tabs(["Live Allocation Planner", "Shift Pre-Deployment Planner", "Bipartite Manpower Dispatcher"])
     
     with tab1:
         c1, c2, c3 = st.columns(3)
@@ -518,14 +518,14 @@ elif PAGE == "🚓 Resource Optimizer":
         st.dataframe(styler, use_container_width=True, height=400)
         
         if alloc.shortfall.sum() > 0:
-            st.warning(f"⚠️ {int(alloc.shortfall.sum())} officer-slots short. "
+            st.warning(f"{int(alloc.shortfall.sum())} officer-slots short. "
                        f"Increase the pool or these events stay under-resourced.")
             
         # CSV Export Button
         try:
             csv_data = alloc.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download Deployment Plan (CSV)",
+                label="Download Deployment Plan (CSV)",
                 data=csv_data,
                 file_name=f"trafficast_deployment_plan_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
@@ -535,7 +535,7 @@ elif PAGE == "🚓 Resource Optimizer":
             st.error(f"Error creating download: {e}")
 
     with tab2:
-        st.subheader("📅 Shift Pre-Deployment Planner")
+        st.subheader("Shift Pre-Deployment Planner")
         st.caption("Plan officer pre-positioning based on historical load profiles of each zone for specific days.")
         
         c1, c2 = st.columns(2)
@@ -579,7 +579,7 @@ elif PAGE == "🚓 Resource Optimizer":
             st.info("No load profile data available.")
 
     with tab3:
-        st.subheader("⚡ Bipartite Station-to-Event Dispatch Dispatcher")
+        st.subheader("Bipartite Station-to-Event Dispatch Dispatcher")
         st.caption("Route-aware dispatch optimization: matches nearest police stations to high-impact incidents.")
         
         # We calculate active events
@@ -607,14 +607,14 @@ elif PAGE == "🚓 Resource Optimizer":
 # =========================================================================== #
 #  DIVERSION PLANNER  (MapmyIndia Routes API)
 # =========================================================================== #
-elif PAGE == "🧭 Diversion Planner":
-    st.title("🧭 Diversion Planner")
+elif PAGE == "Diversion Planner":
+    st.title("Diversion Planner")
     st.caption("When an event blocks a road, find alternate routes around it — powered by the "
                "MapmyIndia Routes API. (External map/routing APIs are permitted; used for "
                "display only, not training.)")
 
     if not mappls.has_key():
-        st.warning("🔑 No MapmyIndia key found — running in **fallback mode** (straight-line preview). "
+        st.warning("No MapmyIndia key found — running in **fallback mode** (straight-line preview)."
                    "Add `MAPPLS_REST_KEY` (or `MAPPLS_CLIENT_ID`/`MAPPLS_CLIENT_SECRET`) as an "
                    "environment variable or in `.streamlit/secrets.toml` to enable live routing.")
 
@@ -638,7 +638,7 @@ elif PAGE == "🧭 Diversion Planner":
     origin = (blocked[0] + 0.01, blocked[1] + 0.01)   # approach point just before the blockage
     nalt = st.slider("Route options to fetch", 1, 4, 3)
 
-    if st.button("🧭 Find diversion routes", use_container_width=True):
+    if st.button("Find diversion routes", use_container_width=True):
         routes = mappls.directions(origin, dest, alternatives=nalt)
         fig = go.Figure()
         if routes:
@@ -647,25 +647,25 @@ elif PAGE == "🧭 Diversion Planner":
             for i, r in enumerate(routes):
                 lats = [c[0] for c in r["coords"]]; lons = [c[1] for c in r["coords"]]
                 avoid = mappls.route_min_distance_to(r["coords"], blocked)
-                name = f"Route {i+1}" + (" ✅ recommended" if i == best_i else "")
+                name = f"Route {i+1}" + (" recommended" if i == best_i else "")
                 fig.add_trace(go.Scattermapbox(lat=lats, lon=lons, mode="lines",
                               line=dict(width=6 if i == best_i else 3),
                               name=name))
                 rows.append({"Route": f"R{i+1}", "Distance (km)": r["distance_km"],
                              "ETA (min)": r["duration_min"],
                              "Clears blockage by (km)": round(avoid, 2),
-                             "Recommended": "✅" if i == best_i else ""})
+                             "Recommended": "Recommended" if i == best_i else ""})
             st.success(f"Found {len(routes)} route option(s). **Route {best_i+1}** best avoids the "
                        f"blockage (stays {rows[best_i]['Clears blockage by (km)']} km clear).")
             st.dataframe(pd.DataFrame(rows), use_container_width=True)
         else:
             fig.add_trace(go.Scattermapbox(lat=[origin[0], dest[0]], lon=[origin[1], dest[1]],
                           mode="lines", line=dict(width=4, color="gray"), name="straight-line (fallback)"))
-            st.info("Showing a straight-line preview (no live key). With a MapmyIndia key this becomes "
+            st.info("Showing a straight-line preview (no live key). With a MapmyIndia key this becomes"
                     "real road-network routes with alternatives.")
         # markers
         fig.add_trace(go.Scattermapbox(lat=[blocked[0]], lon=[blocked[1]], mode="markers",
-                      marker=dict(size=18, color="red"), name="🚧 Blockage"))
+                      marker=dict(size=18, color="red"), name="Blockage"))
         fig.add_trace(go.Scattermapbox(lat=[dest[0]], lon=[dest[1]], mode="markers",
                       marker=dict(size=14, color="blue"), name="Destination"))
         fig.update_layout(
@@ -679,8 +679,8 @@ elif PAGE == "🧭 Diversion Planner":
 # =========================================================================== #
 #  4 · HOTSPOT INTELLIGENCE
 # =========================================================================== #
-elif PAGE == "📍 Hotspot Intelligence":
-    st.title("📍 Hotspot Intelligence")
+elif PAGE == "Hotspot Intelligence":
+    st.title("Hotspot Intelligence")
     st.caption("Recurring event clusters (DBSCAN) + when each zone is busiest + corridor risk analysis.")
 
     hot = bundle["hotspots"]
@@ -773,7 +773,7 @@ elif PAGE == "📍 Hotspot Intelligence":
             st.info("No surges detected for this zone with current settings.")
 
     with t4:
-        st.subheader("📊 Corridor Performance Scorecard")
+        st.subheader("Corridor Performance Scorecard")
         st.caption("Side-by-side risk comparison of key corridors using historical incident statistics.")
         
         # Calculate scorecard
@@ -787,11 +787,11 @@ elif PAGE == "📍 Hotspot Intelligence":
         # Assign risk grades based on closure rate & impact
         def get_grade(row):
             score = row["avg_impact"]
-            if score > 55: return "🔴 Grade F (Critical Risk)"
-            elif score > 45: return "🟠 Grade D (High Risk)"
-            elif score > 35: return "🟡 Grade C (Moderate Risk)"
-            elif score > 25: return "🟢 Grade B (Low Risk)"
-            else: return "🟢 Grade A (Optimal)"
+            if score > 55: return "Grade F (Critical Risk)"
+            elif score > 45: return "Grade D (High Risk)"
+            elif score > 35: return "Grade C (Moderate Risk)"
+            elif score > 25: return "Grade B (Low Risk)"
+            else: return "Grade A (Optimal)"
             
         corr_stats["Risk Grade"] = corr_stats.apply(get_grade, axis=1)
         corr_stats = corr_stats.sort_values("avg_impact", ascending=False)
@@ -807,7 +807,7 @@ elif PAGE == "📍 Hotspot Intelligence":
         }), use_container_width=True)
 
     with t5:
-        st.subheader("🔮 24-Hour Spatiotemporal Zone Risk Timeline")
+        st.subheader("24-Hour Spatiotemporal Zone Risk Timeline")
         st.caption("Hour-by-hour relative risk forecast calculated from historical load profiles.")
         
         # Aggregate relative risk profile by zone and hour
@@ -824,15 +824,15 @@ elif PAGE == "📍 Hotspot Intelligence":
                                  labels=dict(color="Risk Index (0-100)"), height=460)
             fig_risk.update_layout(xaxis=dict(tickmode="linear", tick0=0, dtick=1), margin=dict(l=0, r=0, t=10, b=0))
             st.plotly_chart(fig_risk, use_container_width=True)
-            st.info("💡 Columns 0 to 23 represent hours of the day (Midnight to 11 PM). Use this to identify peak risk envelopes.")
+            st.info("Columns 0 to 23 represent hours of the day (Midnight to 11 PM). Use this to identify peak risk envelopes.")
         else:
             st.info("No risk profile data available.")
 
 # =========================================================================== #
 #  5 · ASK TRAFFICAST  (grounded NLQ assistant)
 # =========================================================================== #
-elif PAGE == "💬 Ask TraffiCast":
-    st.title("💬 Ask TraffiCast")
+elif PAGE == "Ask TraffiCast":
+    st.title("Ask TraffiCast")
     st.caption("AI traffic strategist grounded directly in the Astram incident dataset. Answers questions about corridors, risk profiles, and resource planning.")
 
     # API Key retrieval and input override
@@ -840,7 +840,7 @@ elif PAGE == "💬 Ask TraffiCast":
     api_key = st.text_input("Google Gemini API Key (Optional override)", value=secret_key, type="password")
     
     if api_key and (api_key == st.secrets.get("MAPPLS_REST_KEY") or api_key.startswith("racz")):
-        st.warning("⚠️ Warning: Your Gemini API key appears to be identical to or formatted like your MapmyIndia/Mappls key. Please verify you are using a valid Google Gemini API key.")
+        st.warning("️ Warning: Your Gemini API key appears to be identical to or formatted like your MapmyIndia/Mappls key. Please verify you are using a valid Google Gemini API key.")
 
     examples = [
         "Which corridors have the highest closure rate?",
@@ -876,7 +876,7 @@ elif PAGE == "💬 Ask TraffiCast":
         """
         
         if api_key:
-            with st.spinner("🤖 Consulting Gemini AI Strategist..."):
+            with st.spinner("Consulting Gemini AI Strategist..."):
                 try:
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
@@ -906,16 +906,16 @@ elif PAGE == "💬 Ask TraffiCast":
                     if response is None:
                         raise last_err or Exception("All Gemini model generation attempts failed.")
                         
-                    st.markdown("### 🤖 Strategist Briefing")
+                    st.markdown("### Strategist Briefing")
                     st.write(response.text)
-                    st.success("Grounded via Google Gemini RAG Model ✔")
+                    st.success("Grounded via Google Gemini RAG Model")
                 except Exception as e:
                     st.error(f"Gemini API execution failed: {e}. Falling back to local analytics engine.")
                     api_key = None # trigger fallback
                     
         if not api_key:
             # Enhanced Local Analytics Engine (Fallback)
-            st.markdown("### 📊 Local Analytics Engine Response")
+            st.markdown("### Local Analytics Engine Response")
             ans = ""
             if "corridor" in ql and ("closure" in ql or "close" in ql):
                 t = (raw.groupby("corridor")["requires_road_closure"].agg(["mean", "count"])
@@ -960,28 +960,28 @@ elif PAGE == "💬 Ask TraffiCast":
                              use_container_width=True)
                 ans = "Displaying top keyword matching rows. Enter a more specific query or add a Gemini API Key for a full briefing."
             st.success(ans)
-            st.caption("💡 Local queries are answered using pre-compiled aggregates on the Astram dataset.")
+            st.caption("Local queries are answered using pre-compiled aggregates on the Astram dataset.")
 
 # =========================================================================== #
 #  🧠 AGI URBAN PLANNER
 # =========================================================================== #
-elif PAGE == "🧠 AGI Urban Planner":
-    st.title("🧠 AGI Urban Planner")
+elif PAGE == "AGI Urban Planner":
+    st.title("AGI Urban Planner")
     st.caption("Advanced system architectures solving second-order traffic anomalies (equilibriums, contagion, causal paradoxes, and wakes).")
 
     tab_pb, tab_sc, tab_id, tab_rd, tab_wh = st.tabs([
-        "🔮 Prophecy Breaker",
-        "🦠 Stress Contagion",
-        "⚠️ Induced Demand",
-        "🛡️ Route Diversity",
-        "🚒 Emergency Wake"
+        "Prophecy Breaker",
+        "Stress Contagion",
+        "Induced Demand",
+        "Route Diversity",
+        "Emergency Wake"
     ])
 
     with tab_pb:
-        st.subheader("🔮 Prophecy Breaker — Adversarial Equilibrium Routing")
+        st.subheader("Prophecy Breaker — Adversarial Equilibrium Routing")
         st.caption("Prevents recommendation-induced traffic collapses by solving for Nash Equilibrium routing patterns.")
         
-        st.info("💡 Navigation apps route everyone to alternative Route B when Route A collapses, causing Route B to collapse immediately. Prophecy Breaker simulates this adoption and finds a stable, non-collapsing routing equilibrium.")
+        st.info("Navigation apps route everyone to alternative Route B when Route A collapses, causing Route B to collapse immediately. Prophecy Breaker simulates this adoption and finds a stable, non-collapsing routing equilibrium.")
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -991,7 +991,7 @@ elif PAGE == "🧠 AGI Urban Planner":
             
             router = ProphecyBreakerRouter()
             drivers = [Driver(id=idx, origin=np.random.randint(0, 25), destination=np.random.randint(25, 50), current_route=[]) for idx in range(num_drivers)]
-            run_pb = st.button("🔮 Calculate Equilibrium Routing", use_container_width=True)
+            run_pb = st.button("Calculate Equilibrium Routing", use_container_width=True)
 
         with col2:
             if run_pb:
@@ -1007,7 +1007,7 @@ elif PAGE == "🧠 AGI Urban Planner":
                     eq_avg_time = np.mean(list(eq_times.values()))
                     eq_max_time = np.max(list(eq_times.values()))
                     
-                    st.write("### 📊 Routing Performance Comparison")
+                    st.write("### Routing Performance Comparison")
                     m_c1, m_c2 = st.columns(2)
                     m_c1.metric("Naive Routing (Peak Delay)", f"{naive_max_time:.2f}x", delta=None)
                     m_c2.metric("Prophecy Breaker (Peak Delay)", f"{eq_max_time:.2f}x", f"{(eq_max_time - naive_max_time)/naive_max_time:.1%}")
@@ -1026,7 +1026,7 @@ elif PAGE == "🧠 AGI Urban Planner":
                 st.info("Click 'Calculate Equilibrium Routing' to run the spatiotemporal adoption simulator.")
 
     with tab_sc:
-        st.subheader("🦠 Stress Contagion Predictor")
+        st.subheader("Stress Contagion Predictor")
         st.caption("Treating driver stress and aggression as a contagious disease spreading through spatial intersections.")
         
         col1, col2 = st.columns([1, 2])
@@ -1036,7 +1036,7 @@ elif PAGE == "🧠 AGI Urban Planner":
             gamma = st.slider("Stress Recovery Rate (γ)", 0.02, 0.50, 0.10, 0.02)
             initial_infected = st.slider("Patient Zero (Aggressive Drivers)", 1, 10, 2)
             
-            run_sc = st.button("🦠 Simulate Aggression Outbreak", use_container_width=True)
+            run_sc = st.button("Simulate Aggression Outbreak", use_container_width=True)
 
         with col2:
             if run_sc:
@@ -1065,14 +1065,14 @@ elif PAGE == "🧠 AGI Urban Planner":
                         })
                         
                     df_sc = pd.DataFrame(timeline)
-                    st.write("### 📈 Aggression Spread Timeline")
+                    st.write("### Aggression Spread Timeline")
                     fig_sc = px.line(df_sc, x="minute", y=["Susceptible (Calm)", "Infected (Aggressive)", "Recovered (Calmed Down)"],
                                      title="Driver Psychology Outbreak Simulation (SIR Disease model)")
                     fig_sc.update_layout(yaxis_title="Driver Count", mapbox_style="carto-positron")
                     st.plotly_chart(fig_sc, use_container_width=True)
                     
                     rec_action = predictor.suggest_intervention(current_states)
-                    st.markdown(f"#### 🚨 Active Intervention Advisor: **{rec_action['recommended_action']}**")
+                    st.markdown(f"#### Active Intervention Advisor: **{rec_action['recommended_action']}**")
                     st.write(f"**Target Zone**: {rec_action['zone']} | **Aggressive Drivers**: {rec_action['active_infections']}")
                     st.write(f"**Deployment Detail**: {rec_action['action_details']}")
                     st.success(f"**Expected Calming Response**: {rec_action['calming_impact']}")
@@ -1080,7 +1080,7 @@ elif PAGE == "🧠 AGI Urban Planner":
                 st.info("Click 'Simulate Aggression Outbreak' to trace stress propagation in real time.")
 
     with tab_id:
-        st.subheader("⚠️ Induced Demand Oracle")
+        st.subheader("Induced Demand Oracle")
         st.caption("Forecasting the causal travel-time paradox: when road optimization triggers long-term gridlocks.")
         
         oracle = InducedDemandOracle()
@@ -1094,7 +1094,7 @@ elif PAGE == "🧠 AGI Urban Planner":
         ])
         improvement = c2.slider("Estimated Short-Term Benefit (%)", 10, 50, 25, 5)
         
-        if st.button("⚠️ Assess Induced Demand Risk", use_container_width=True):
+        if st.button("Assess Induced Demand Risk", use_container_width=True):
             res = oracle.assess_intervention(intervention, improvement)
             
             months = list(range(1, 13))
@@ -1107,7 +1107,7 @@ elif PAGE == "🧠 AGI Urban Planner":
                 "Oracle Prediction (Causal Decay)": induced_decay
             })
             
-            st.markdown(f"### 📢 Oracle Verdict: **{res['recommendation']}**")
+            st.markdown(f"### Oracle Verdict: **{res['recommendation']}**")
             st.write(res['explanation'])
             
             fig_id = px.line(df_id, x="Month", y=["Naive Prediction (Constant Benefit)", "Oracle Prediction (Causal Decay)"],
@@ -1115,20 +1115,20 @@ elif PAGE == "🧠 AGI Urban Planner":
             fig_id.update_layout(yaxis_title="Net Transit Time Benefit (%)", mapbox_style="carto-positron")
             st.plotly_chart(fig_id, use_container_width=True)
             
-            st.write("#### 🌿 Demand-Neutral Alternatives (Highly Recommended)")
+            st.write("#### Demand-Neutral Alternatives (Highly Recommended)")
             st.dataframe(pd.DataFrame(oracle.suggest_demand_neutral_alternative(intervention)), use_container_width=True)
 
     with tab_rd:
-        st.subheader("🛡️ Route Diversity Defender")
+        st.subheader("Route Diversity Defender")
         st.caption("Maximizing Shannon entropy of route distribution to prevent localized gridlocks.")
         
-        st.info("💡 Pure shortest-path optimization concentrates 70% of drivers on the same 2 corridors. One crash collapses the entire grid. Route Diversity Defender distributes traffic robustly across alternative paths.")
+        st.info("Pure shortest-path optimization concentrates 70% of drivers on the same 2 corridors. One crash collapses the entire grid. Route Diversity Defender distributes traffic robustly across alternative paths.")
 
         c1, c2 = st.columns(2)
         drivers_cnt = c1.slider("Active Routing Load", 100, 1000, 250, 50)
         detour_pct = c2.slider("Maximum Acceptable Detour", 1.05, 1.40, 1.15, 0.05)
         
-        if st.button("🛡️ Compute Robust Diversified Routes", use_container_width=True):
+        if st.button("Compute Robust Diversified Routes", use_container_width=True):
             defender = RouteDiversityDefender()
             defender.max_acceptable_detour = detour_pct
             
@@ -1163,10 +1163,10 @@ elif PAGE == "🧠 AGI Urban Planner":
             st.dataframe(pd.DataFrame(r_show), use_container_width=True)
 
     with tab_wh:
-        st.subheader("🚒 Emergency Wake Healer")
+        st.subheader("Emergency Wake Healer")
         st.caption("Reconstructing traffic platoon flow in the wake of emergency vehicle transit.")
         
-        st.info("💡 Ambulances splitting traffic creates a wake of stopped cars and broken platoons. Emergency Wake Healer dynamically overrides signal grids to heal the flow in 90 seconds.")
+        st.info("Ambulances splitting traffic creates a wake of stopped cars and broken platoons. Emergency Wake Healer dynamically overrides signal grids to heal the flow in 90 seconds.")
         
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -1174,7 +1174,7 @@ elif PAGE == "🧠 AGI Urban Planner":
             amb_path_len = st.slider("Ambulance Path Intersections", 3, 10, 5)
             strategy = st.checkbox("Enable Green Signal Override (Healer Mode)", value=True)
             
-            run_wh = st.button("🚒 Simulate Platoon Recovery", use_container_width=True)
+            run_wh = st.button("Simulate Platoon Recovery", use_container_width=True)
 
         with col2:
             if run_wh:
@@ -1198,11 +1198,11 @@ elif PAGE == "🧠 AGI Urban Planner":
                     st.plotly_chart(fig_wh, use_container_width=True)
                     
                     if strategy:
-                        st.success("✅ Green Signal phase overrides applied! Platoon restored in under 90 seconds.")
+                        st.success("Green Signal phase overrides applied! Platoon restored in under 90 seconds.")
                         ov_df = pd.DataFrame([{"Intersection": node, "Override Action": o["action"], "Phase Hold (s)": o["green_extension_sec"]} for node, o in overrides.items()])
                         st.dataframe(ov_df, use_container_width=True)
                     else:
-                        st.warning("⚠️ Baseline mode: no signal overrides active. Wake took more than 3 minutes to dissipate.")
+                        st.warning("Baseline mode: no signal overrides active. Wake took more than 3 minutes to dissipate.")
             else:
                 st.info("Click 'Simulate Platoon Recovery' to begin.")
 
@@ -1210,8 +1210,8 @@ elif PAGE == "🧠 AGI Urban Planner":
 # =========================================================================== #
 #  🔁 Post-Event Learning
 # =========================================================================== #
-elif PAGE == "🔁 Post-Event Learning":
-    st.title("🔁 Post-Event Learning Loop")
+elif PAGE == "Post-Event Learning":
+    st.title("Post-Event Learning Loop")
     st.caption("Log what actually happened → track accuracy → retrain. The system improves with every event.")
 
     st.subheader("Log an outcome")
@@ -1233,7 +1233,7 @@ elif PAGE == "🔁 Post-Event Learning":
         os.makedirs(ARTIFACTS, exist_ok=True)
         with open(FEEDBACK, "a") as fh:
             fh.write(json.dumps(rec) + "\n")
-        st.success("Logged ✔")
+        st.success("Logged")
 
     if os.path.exists(FEEDBACK):
         log = pd.read_json(FEEDBACK, lines=True)
@@ -1245,14 +1245,14 @@ elif PAGE == "🔁 Post-Event Learning":
             st.dataframe(log.tail(20), use_container_width=True)
             
             # RETRAIN BUTTON
-            st.subheader("🔁 Close the Loop: Retrain Models")
+            st.subheader("Close the Loop: Retrain Models")
             st.caption("Train new LightGBM models incorporating the logged post-event outcomes above.")
-            if st.button("🚀 Retrain Models Now", use_container_width=True):
+            if st.button("Retrain Models Now", use_container_width=True):
                 with st.spinner("Retraining LightGBM models on historical + logged outcomes..."):
                     new_bundle = M.retrain_with_feedback(DATA_PATH, FEEDBACK, ARTIFACTS)
                     # Clear st cache to reload
                     st.cache_resource.clear()
-                    st.success("✅ Models successfully retrained and cached!")
+                    st.success("Models successfully retrained and cached!")
                     st.rerun()
     else:
         st.info("No outcomes logged yet. Each closed event you log here trains the next model.")
@@ -1260,8 +1260,8 @@ elif PAGE == "🔁 Post-Event Learning":
 # =========================================================================== #
 #  7 · MODEL TRUST & PERFORMANCE
 # =========================================================================== #
-elif PAGE == "🔬 Model Trust & Performance":
-    st.title("🔬 Model Trust & Performance")
+elif PAGE == "Model Trust & Performance":
+    st.title("Model Trust & Performance")
     st.caption("Transparent, validated metrics — the adoption story for Bengaluru Traffic Police.")
 
     c1, c2, c3, c4 = st.columns(4)
@@ -1287,7 +1287,7 @@ elif PAGE == "🔬 Model Trust & Performance":
                       xaxis_title="importance", yaxis_title="")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.info("**Design honesty (a strength, not a weakness):** we predict event *impact and "
+    st.info("**Design honesty (a strength, not a weakness):** we predict event *impact and"
             "resource need* — fully supported by the provided incident data — instead of fabricating "
             "road-flow telemetry the dataset doesn't contain. Exact-minute duration is intrinsically "
             "noisy here (admin auto-close), so we reframed it as the decision-relevant 'blocks >3h?' "
