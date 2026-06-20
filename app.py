@@ -839,8 +839,8 @@ elif PAGE == "💬 Ask TraffiCast":
     secret_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
     api_key = st.text_input("Google Gemini API Key (Optional override)", value=secret_key, type="password")
     
-    if api_key and not api_key.startswith("AIzaSy"):
-        st.warning("⚠️ Warning: Your Gemini API key does not start with 'AIzaSy'. Google Gemini API keys usually start with 'AIzaSy'. Please verify that you have not pasted a MapmyIndia/Mappls or other service key by mistake.")
+    if api_key and (api_key == st.secrets.get("MAPPLS_REST_KEY") or api_key.startswith("racz")):
+        st.warning("⚠️ Warning: Your Gemini API key appears to be identical to or formatted like your MapmyIndia/Mappls key. Please verify you are using a valid Google Gemini API key.")
 
     examples = [
         "Which corridors have the highest closure rate?",
@@ -891,7 +891,7 @@ elif PAGE == "💬 Ask TraffiCast":
                     """
                     
                     # Try a few common model names in case of API version/model availability differences
-                    model_names = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.5-flash', 'gemini-pro']
+                    model_names = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro']
                     response = None
                     last_err = None
                     for m_name in model_names:
