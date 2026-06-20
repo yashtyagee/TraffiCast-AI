@@ -339,7 +339,7 @@ def predict_event(bundle: dict, ev: dict) -> dict:
         pred_dur = float(db['model'].predict(X_dur)[0])
         pred_dur = max(1.0, round(pred_dur, 1))
         
-    plan = recommend(cp, lp, sv, ev.get('event_cause'))
+    plan = recommend(cp, lp, sv, pred_dur, local_density, ev.get('event_cause'))
     plan.update(closure_probability=round(cp, 3), long_blocker_probability=round(lp, 3),
                 severity=sb['labels'][sv], predicted_duration_min=pred_dur)
     return plan
@@ -375,23 +375,41 @@ def predict_batch(bundle: dict, df: pd.DataFrame) -> pd.DataFrame:
     out['closure_prob'] = cp; out['longblock_prob'] = lp
     out['severity'] = [sb['labels'][int(x)] for x in sv]
     out['predicted_duration_min'] = [round(float(x), 1) for x in dur_preds]
-    out['impact_score'] = [impact_score(a, b2, int(c), cause)
-                           for a, b2, c, cause in zip(cp, lp, sv, df.get('event_cause', 'unknown'))]
+    
+    # Calculate unified Event Impact Score (0-100) combining closure, longblock, severity, duration, and density
+    impact_scores = []
+    for a, b2, c, dur, dens, cause in zip(cp, lp, sv, dur_preds, dn, df.get('event_cause', 'unknown')):
+        impact_scores.append(impact_score(a, b2, int(c), dur, dens, cause))
+    out['impact_score'] = impact_scores
     out['tier'] = [tier_of(s) for s in out['impact_score']]
     return out
 
 # ----------------------------------------------------------------------------
 #  Resource recommendation + allocation
 # ----------------------------------------------------------------------------
-def impact_score(closure_p, longblock_p, sev, cause):
+def impact_score(closure_p, longblock_p, sev, predicted_duration, density, cause):
     hot = HOT_CAUSES.get(str(cause), .4)
-    return round(100*(0.40*closure_p + 0.30*longblock_p + 0.15*(sev/2) + 0.15*hot), 1)
+    # Normalize duration: 0 to 240+ minutes scaled to 0-1
+    dur_norm = min(float(predicted_duration) / 240.0, 1.0)
+    # Normalize density: 0 to 15+ scaled to 0-1
+    dens_norm = min(float(density) / 15.0, 1.0)
+    # Severity: 0, 1, 2 scaled to 0-1
+    sev_norm = float(sev) / 2.0
+    
+    # Unified Event Impact Score (0-100) combining closure, longblock, severity, duration, and density
+    score = 100 * (0.25 * closure_p + 
+                   0.25 * longblock_p + 
+                   0.15 * sev_norm + 
+                   0.15 * dur_norm + 
+                   0.10 * dens_norm + 
+                   0.10 * hot)
+    return round(score, 1)
 
 def tier_of(score):
     return 'CRITICAL' if score > 75 else 'HIGH' if score > 50 else 'MODERATE' if score > 25 else 'LOW'
 
-def recommend(closure_p, longblock_p, sev, cause):
-    sc = impact_score(closure_p, longblock_p, sev, cause)
+def recommend(closure_p, longblock_p, sev, predicted_duration, density, cause):
+    sc = impact_score(closure_p, longblock_p, sev, predicted_duration, density, cause)
     return dict(impact_score=sc, tier=tier_of(sc),
                 officers=int(np.ceil(sc/20)),
                 barricades=int(np.ceil(closure_p*8)) if closure_p > 0.3 else 0,

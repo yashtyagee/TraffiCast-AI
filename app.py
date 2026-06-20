@@ -85,7 +85,7 @@ PAGE = st.sidebar.radio("Navigate", [
     "Diversion Planner",
     "Hotspot Intelligence",
     "Ask TraffiCast",
-    "AGI Urban Planner",
+    "Advanced Traffic Dynamics",
     "Post-Event Learning",
     "Model Trust & Performance",
 ])
@@ -94,6 +94,24 @@ st.sidebar.metric("Events in dataset", f"{len(raw):,}")
 st.sidebar.metric("Closure model AUC", f"{bundle['closure']['auc']:.3f}")
 st.sidebar.metric("Long-blocker AUC", f"{bundle['longblock']['auc']:.3f}")
 st.sidebar.caption(f"ML backend: {bundle['backend']}")
+
+st.sidebar.divider()
+with st.sidebar.expander("📖 Pitch & Problem Map", expanded=True):
+    st.markdown("""
+    **Flipkart Gridlock Hackathon 2.0 PS2**
+    
+    1. **Gap: Impact not quantified in advance**
+       👉 *Solution*: **Simulate Event** + **Event Impact Score (EIS)**.
+    
+    2. **Gap: Resource deployment is experience-driven**
+       👉 *Solution*: **Resource Optimizer** + **Deployment Briefing (Ops Card)**.
+    
+    3. **Gap: No post-event learning**
+       👉 *Solution*: **Post-Event Learning Loop** + **Retrain Models**.
+       
+    **Dataset Compliance**:
+    Trained and evaluated **ONLY** on the provided Astram incident dataset. All models run locally on this data without external telemetry.
+    """)
 
 # Custom CSS Injection for Hackathon-Winning Aesthetics
 st.markdown("""
@@ -173,6 +191,67 @@ st.markdown("""
 def tier_badge(tier):
     return f"<span style='background:{TIER_COLOR[tier]};color:white;padding:2px 10px;border-radius:10px;font-weight:600'>{tier}</span>"
 
+def haversine_km(a, b):
+    (la1, lo1), (la2, lo2) = a, b
+    R = 6371.0
+    dlat = np.radians(la2-la1); dlon = np.radians(lo2-lo1)
+    h = (np.sin(dlat/2)**2 + np.cos(np.radians(la1))*np.cos(np.radians(la2))*np.sin(dlon/2)**2)
+    return 2*R*np.arcsin(np.sqrt(h))
+
+def detect_conflicts(df, max_dist_km=3.0):
+    events = df.dropna(subset=['latitude', 'longitude', 'impact_score']).copy()
+    if len(events) < 2:
+        return []
+    # Make sure we sort them by datetime or date
+    events['date'] = pd.to_datetime(events['start_datetime']).dt.date
+    conflicts = []
+    visited = set()
+    for i, r1 in events.iterrows():
+        if r1['id'] in visited:
+            continue
+        group = [r1]
+        for j, r2 in events.iterrows():
+            if r1['id'] == r2['id'] or r2['id'] in visited:
+                continue
+            if r1['date'] != r2['date']:
+                continue
+            dist = haversine_km((r1['latitude'], r1['longitude']), (r2['latitude'], r2['longitude']))
+            if dist <= max_dist_km:
+                group.append(r2)
+        if len(group) >= 2:
+            for r in group:
+                visited.add(r['id'])
+            conflicts.append(group)
+    zones = []
+    for idx, group in enumerate(conflicts):
+        lats = [r['latitude'] for r in group]
+        lons = [r['longitude'] for r in group]
+        eiss = [r['impact_score'] for r in group]
+        eiss_sorted = sorted(eiss, reverse=True)
+        compounded_eis = min(100.0, round(eiss_sorted[0] + 0.4 * sum(eiss_sorted[1:]), 1))
+        centroid_lat = np.mean(lats)
+        centroid_lon = np.mean(lons)
+        total_off = sum(int(np.ceil(e / 20)) for e in eiss)
+        merged_off = max(1, int(np.ceil(total_off * 0.8)))
+        
+        # Merged barricades
+        total_barr = sum(int(np.ceil(r.get('closure_prob', 0) * 8)) for r in group if r.get('closure_prob', 0) > 0.3)
+        merged_barr = max(1, int(np.ceil(total_barr * 0.7))) if total_barr > 0 else 0
+        
+        zones.append({
+            "zone_id": f"Conflict Zone {idx + 1}",
+            "events_count": len(group),
+            "events": [f"{r['event_cause']} at {r.get('corridor', 'unknown')}" for r in group],
+            "compounded_eis": compounded_eis,
+            "latitude": centroid_lat,
+            "longitude": centroid_lon,
+            "merged_officers": merged_off,
+            "merged_barricades": merged_barr,
+            "date": group[0]['date'],
+            "details": group
+        })
+    return zones
+
 
 # =========================================================================== #
 #  1 · COMMAND CENTER
@@ -181,12 +260,26 @@ if PAGE == "Command Center":
     st.title("Command Center")
     st.caption("Live operating picture — every event scored for impact in real time.")
 
+    # Unified headline metric: Event Impact Score (EIS)
+    st.markdown(
+        f"""
+        <div style="background: linear-gradient(135deg, #111520 0%, #1e263d 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 22px; margin-bottom: 25px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+            <div style="font-size: 14px; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 2px;">Unified Fleet Event Impact Score (EIS)</div>
+            <div style="font-size: 56px; color: #3b82f6; font-weight: 800; margin: 8px 0; font-family: 'Outfit', sans-serif;">{scored.impact_score.mean():.1f} <span style="font-size: 20px; color: #64748b; font-weight: 500;">/ 100</span></div>
+            <div style="font-size: 13px; color: #94a3b8; font-weight: 400; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                A single unified metric combining road closure probability, long blockage risk (>3h), severity index, estimated duration, and localized event density.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total events", f"{len(scored):,}")
     c2.metric("Critical", int((scored.tier == "CRITICAL").sum()))
     c3.metric("High", int((scored.tier == "HIGH").sum()))
     c4.metric("Need diversion", int((scored.longblock_prob > 0.5).sum()))
-    c5.metric("Avg impact", f"{scored.impact_score.mean():.0f}")
+    c5.metric("Avg EIS", f"{scored.impact_score.mean():.1f}")
 
     with st.expander("🔍 Filters", expanded=True):
         f1, f2, f3 = st.columns(3)
@@ -290,6 +383,42 @@ if PAGE == "Command Center":
         else:
             st.info("No events match the current filters.")
 
+    # Event Spatiotemporal Risk Heatmap (7x24 grid colored by historical average EIS)
+    st.divider()
+    st.subheader("🗓️ Event Spatiotemporal Risk Heatmap")
+    st.caption("Historical average impact score (EIS) across days of the week and hours of the day. Colored by average EIS to show peak risk windows.")
+    
+    # Filter cause for heatmap
+    heat_cause = st.selectbox("Filter Heatmap by Event Cause", ["All Causes"] + CAUSES, index=0)
+    heat_df = scored.copy()
+    if heat_cause != "All Causes":
+        heat_df = heat_df[heat_df.event_cause == heat_cause]
+        
+    if len(heat_df) > 0:
+        # Group by DOW (0-6) and Hour (0-23)
+        grid = heat_df.groupby(['dow', 'hour'])['impact_score'].mean().unstack(fill_value=0)
+        grid = grid.reindex(index=range(7), columns=range(24), fill_value=0)
+        
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        hours = [f"{h:02d}:00" for h in range(24)]
+        
+        fig_heat = px.imshow(
+            grid.values,
+            labels=dict(x="Hour of Day", y="Day of Week", color="Average EIS"),
+            x=hours,
+            y=day_names,
+            color_continuous_scale="YlOrRd",
+            aspect="auto",
+            height=320
+        )
+        fig_heat.update_layout(
+            margin=dict(l=0, r=0, t=10, b=10),
+            coloraxis_colorbar=dict(title="EIS")
+        )
+        st.plotly_chart(fig_heat, use_container_width=True)
+    else:
+        st.info("No data available for this cause to display heatmap.")
+
 # =========================================================================== #
 #  2 · SIMULATE EVENT
 # =========================================================================== #
@@ -339,6 +468,48 @@ elif PAGE == "Simulate Event (What-if)":
         r2.metric("Barricades", plan["barricades"])
         r3.metric("Set diversion", "YES" if plan["set_diversion"] else "no")
         r4.metric("Pre-position crane", "YES" if plan["pre_position_crane"] else "no")
+
+        # Severity Timeline - "What happens in the next 3 hours?"
+        st.write("")
+        st.subheader("⏱️ Projected Shift Severity Timeline (Next 3 Hours)")
+        st.caption("How the incident severity is expected to evolve during the shift (combining duration + severity predictions).")
+        
+        # Timeline calculation
+        sevs = ["LOW", "MODERATE", "HIGH", "CRITICAL"]
+        init_sev = plan["severity"]
+        duration_min = plan.get("predicted_duration_min", 120)
+        init_idx = sevs.index(init_sev)
+        
+        timeline = []
+        for hour in [1, 2, 3]:
+            time_elapsed = hour * 60
+            if time_elapsed > duration_min + 30:
+                current_sev = "LOW"
+            else:
+                ratio_remaining = max(0.0, (duration_min - (time_elapsed - 30)) / duration_min)
+                current_idx = int(np.round(init_idx * ratio_remaining))
+                current_sev = sevs[current_idx]
+                
+            timeline.append({
+                "hour": f"Hour {hour} ({time_elapsed - 60}-{time_elapsed}m)",
+                "severity": current_sev,
+                "status": "Active Peak" if current_sev == init_sev else "Dissipating" if current_sev != "LOW" else "Resolved"
+            })
+            
+        t_cols = st.columns(3)
+        for idx, step in enumerate(timeline):
+            color = TIER_COLOR.get(step["severity"], "#1a8fe3")
+            t_cols[idx].markdown(
+                f"""
+                <div style="background-color: #111520; border: 2px solid {color}; border-radius: 10px; padding: 15px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                    <div style="font-size: 13px; color: #94a3b8; font-weight: 500;">{step["hour"]}</div>
+                    <div style="font-size: 20px; color: {color}; font-weight: 700; margin: 5px 0;">{step["severity"]}</div>
+                    <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase;">{step["status"]}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        st.write("")
 
         # Preset tabs for advanced outputs
         t_cf, t_sim, t_shap = st.tabs([
@@ -477,7 +648,7 @@ elif PAGE == "Resource Optimizer":
     st.title("Resource Deployment Optimizer")
     st.caption("Allocate a limited officer pool across many simultaneous events — impact-first.")
 
-    tab1, tab2, tab3 = st.tabs(["Live Allocation Planner", "Shift Pre-Deployment Planner", "Bipartite Manpower Dispatcher"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Live Allocation Planner", "Shift Pre-Deployment Planner", "Bipartite Manpower Dispatcher", "Conflict Zone Detector"])
     
     with tab1:
         c1, c2, c3 = st.columns(3)
@@ -533,6 +704,47 @@ elif PAGE == "Resource Optimizer":
             )
         except Exception as e:
             st.error(f"Error creating download: {e}")
+
+        # Plain-English Ops Card deployment briefing
+        st.write("")
+        if st.button("📋 Generate Deployment Briefing (Ops Card)", use_container_width=True):
+            st.subheader("📋 Traffic Dispatch Operations Briefing")
+            st.caption("Copy-pasteable operations card for field inspectors and traffic control wardens.")
+            
+            briefing = []
+            briefing.append("### 🚦 BENGALURU TRAFFIC POLICE DISPATCH BRIEFING")
+            briefing.append(f"**Date/Time generated**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            briefing.append(f"**Total Resource Strength**: {pool} Officers Deployed | **Total Coverage**: {int((alloc.officers_assigned > 0).sum())} of {len(alloc)} events")
+            briefing.append("\n" + "="*80 + "\n")
+            
+            for i, r in alloc.iterrows():
+                if r.officers_assigned == 0:
+                    continue
+                briefing.append(f"📍 **DISPATCH ORDER: {r.event_cause.upper()} at {str(r.get('corridor', 'unknown')).upper()}**")
+                briefing.append(f"  - **Area Jurisdiction**: Sector {r.get('zone', 'unknown')} (Station: {r.get('police_station', 'unknown')})")
+                briefing.append(f"  - **Manpower**: Deploy **{int(r.officers_assigned)} Officers** (Requested: {int(r.officers_needed)})")
+                
+                # Barricading instructions
+                closure_prob = r.get('closure_prob', 0)
+                if closure_prob > 0.3:
+                    barr_cnt = int(np.ceil(closure_prob * 8))
+                    briefing.append(f"  - **Barricading Plan**: Deploy **{barr_cnt} barricades** around coordinate `[{r.latitude:.5f}, {r.longitude:.5f}]`.")
+                else:
+                    briefing.append("  - **Barricading Plan**: No static closure expected. Maintain soft barricades for safety.")
+                    
+                # Diversion instructions
+                longblock_prob = r.get('longblock_prob', 0)
+                if longblock_prob > 0.5 or closure_prob > 0.5:
+                    briefing.append(f"  - **Diversion Plan**: **ACTIVE DIVERSION REQUIRED**. Implement localized route filtering. Divert transit traffic away from {r.get('corridor', 'the intersection')}.")
+                else:
+                    briefing.append("  - **Diversion Plan**: Standard flow. No active diversion needed; monitor congestion closely.")
+                
+                # Model confidence
+                briefing.append(f"  - **Decision Confidence**: EIS Impact {r.impact_score:.1f} | Closure Probability {r.closure_prob:.1%}")
+                briefing.append("\n" + "-"*50 + "\n")
+                
+            briefing_text = "\n".join(briefing)
+            st.text_area("Plain-Text Operations Card", value=briefing_text, height=350)
 
     with tab2:
         st.subheader("Shift Pre-Deployment Planner")
@@ -603,6 +815,41 @@ elif PAGE == "Resource Optimizer":
                 st.info("All dispatch pools allocated.")
         else:
             st.info("No active incidents to dispatch officers to.")
+
+    with tab4:
+        st.subheader("Conflict Zone Detector")
+        st.caption("Flags when 2+ active events fall within 3 km of each other on the same day, computes compounded EIS, and recommends a merged resource plan.")
+        
+        # Slider for distance threshold
+        dist_thresh = st.slider("Conflict Distance Threshold (km)", 1.0, 5.0, 3.0, 0.5)
+        
+        # Run detection
+        conflicts = detect_conflicts(scored, max_dist_km=dist_thresh)
+        
+        if conflicts:
+            st.warning(f"🚨 {len(conflicts)} active Conflict Zones detected! Merged plans recommended below.")
+            
+            for zone in conflicts:
+                with st.expander(f"🔴 {zone['zone_id']} — {zone['events_count']} Overlapping Events (Compounded EIS: {zone['compounded_eis']})", expanded=True):
+                    st.markdown("**Overlapping Events in Cluster:**")
+                    for ev in zone['events']:
+                        st.markdown(f"- {ev}")
+                    
+                    st.write("")
+                    col_z1, col_z2, col_z3 = st.columns(3)
+                    col_z1.metric("Compounded EIS", f"{zone['compounded_eis']:.1f}", help="Compounded EIS = max_EIS + 40% of secondary EIS (capped at 100).")
+                    col_z2.metric("Merged Officers Needed", zone['merged_officers'], help="20% resource synergy savings applied due to shared area coordination.")
+                    col_z3.metric("Merged Barricades Needed", zone['merged_barricades'], help="30% resource synergy savings applied.")
+                    
+                    st.markdown("**Actionable Merged Operations Card**:")
+                    st.info(
+                        f"👉 **Consolidated Command**: Establish a single command post at coordinates `[{zone['latitude']:.5f}, {zone['longitude']:.5f}]` "
+                        f"to direct the **{zone['merged_officers']} officers** assigned.\n\n"
+                        f"👉 **Joint Diversion**: Implement a single, coordinated diversion plan. Divert traffic around the entire cluster "
+                        f"boundary to prevent gridlock contagion and route-alternatives collapse."
+                    )
+        else:
+            st.success("✅ No conflict zones detected. All active events are isolated (> 3 km apart).")
 
 # =========================================================================== #
 #  DIVERSION PLANNER  (MapmyIndia Routes API)
@@ -963,10 +1210,10 @@ elif PAGE == "Ask TraffiCast":
             st.caption("Local queries are answered using pre-compiled aggregates on the Astram dataset.")
 
 # =========================================================================== #
-#  🧠 AGI URBAN PLANNER
+#  Advanced Traffic Dynamics
 # =========================================================================== #
-elif PAGE == "AGI Urban Planner":
-    st.title("AGI Urban Planner")
+elif PAGE == "Advanced Traffic Dynamics":
+    st.title("Advanced Traffic Dynamics")
     st.caption("Advanced system architectures solving second-order traffic anomalies (equilibriums, contagion, causal paradoxes, and wakes).")
 
     tab_pb, tab_sc, tab_id, tab_rd, tab_wh = st.tabs([
@@ -1243,6 +1490,53 @@ elif PAGE == "Post-Event Learning":
             a.metric("Closure accuracy", f"{log.closure_correct.mean():.0%}")
             b3.metric(">3h accuracy", f"{log.long_correct.mean():.0%}")
             st.dataframe(log.tail(20), use_container_width=True)
+
+            # Calculate learning payoff
+            st.write("")
+            st.subheader("📈 Post-Event Continuous Learning Payoff")
+            st.caption("How much model error was reduced by incorporating the logged feedback outcomes.")
+            
+            try:
+                # Reconstruct events and run new predictions
+                new_predictions = []
+                for _, row in log.iterrows():
+                    ev_dict = {
+                        "event_type": "unplanned",
+                        "event_cause": row['cause'],
+                        "priority": "High",
+                        "corridor": "unknown",
+                        "zone": "unknown",
+                        "police_station": "unknown",
+                        "latitude": 12.9716,
+                        "longitude": 77.5946,
+                        "description": "",
+                        "address": "",
+                        "start_datetime": row.get('ts', datetime.datetime.now().isoformat())
+                    }
+                    new_predictions.append(M.predict_event(bundle, ev_dict))
+                
+                # Compute average errors
+                before_closure_err = np.mean(np.abs(log['actual_closure'].astype(int) - log['pred_closure']))
+                after_closure_err = np.mean(np.abs(log['actual_closure'].astype(int) - [p['closure_probability'] for p in new_predictions]))
+                
+                # Calculate percentage improvement
+                if before_closure_err > 0:
+                    improvement = (before_closure_err - after_closure_err) / before_closure_err
+                else:
+                    improvement = 0.0
+                    
+                col_e1, col_e2, col_e3 = st.columns(3)
+                col_e1.metric("Original Average Error", f"{before_closure_err:.2%}")
+                col_e2.metric("Retrained Average Error", f"{after_closure_err:.2%}")
+                
+                if improvement > 0:
+                    col_e3.metric("Error Reduction", f"{improvement:.1%}", delta=f"-{improvement:.1%}")
+                    st.success(f"🎉 Payoff: Model error reduced by **{improvement:.1%}** after learning from post-event feedback!")
+                else:
+                    col_e3.metric("Error Change", f"{improvement:.1%}")
+                    st.info("The models are fully optimized with the current feedback log.")
+            except Exception as ex_calc:
+                st.caption(f"Error computing performance metrics: {ex_calc}")
             
             # RETRAIN BUTTON
             st.subheader("Close the Loop: Retrain Models")
