@@ -101,7 +101,6 @@ The Streamlit interface (`app.py`) provides 10 specialized operational modules:
 - `TRAFFICAST_CSV`: Set to override the path to the dataset CSV (default: `data/astram_event_data.csv`).
 - `TRAFFICAST_ARTIFACTS`: Set to override the model caching directory (default: `artifacts/`).
 - `MAPPLS_REST_KEY`: Set to enable live MapmyIndia Route Directions routing. Alternatively, configure in `.streamlit/secrets.toml`.
-- `GEMINI_API_KEY`: Set to enable the LLM RAG Strategist in the "Ask TraffiCast" module.
 
 ---
 
@@ -109,4 +108,4 @@ The Streamlit interface (`app.py`) provides 10 specialized operational modules:
 As per the hackathon rules and FAQs regarding external data:
 - **Trained ONLY on Provided Data**: All predictive models (road closure, long block, severity, duration regression), spatial hotspot clustering (DBSCAN), local density estimators (BallTree KNN), and spatiotemporal Hawkes processes are trained and calculated **strictly on the provided Astram event dataset** (`data/astram_event_data.csv`).
 - **No External Data Leakage**: There is zero dependency on external traffic speed telemetry, public road flow data, or secondary datasets for model training or inference.
-- **Allowed Display-Time APIs**: The optional MapmyIndia (Mappls) directions API and Google Gemini API are used purely at display-time / inference-time for visualization (diversion routing and RAG policy briefing) and do not violate dataset constraints. If keys are omitted, the application runs entirely offline in fallback mode.
+- **Allowed Display-Time APIs**: The optional MapmyIndia (Mappls) directions API is used purely at display-time / inference-time for route visualization and does not violate dataset constraints. If keys are omitted, the application runs entirely offline in fallback mode.
