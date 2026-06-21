@@ -256,29 +256,55 @@ def haversine_km(a, b):
     return 2*R*np.arcsin(np.sqrt(h))
 
 def detect_conflicts(df, max_dist_km=3.0):
-    events = df.dropna(subset=['latitude', 'longitude', 'impact_score']).copy()
+    events = df.copy()
+    events['latitude'] = pd.to_numeric(events['latitude'], errors='coerce')
+    events['longitude'] = pd.to_numeric(events['longitude'], errors='coerce')
+    events = events.dropna(subset=['latitude', 'longitude', 'impact_score']).copy()
+    
+    if 'status' in events.columns:
+        events = events[events['status'] == 'active'].copy()
+        
     if len(events) < 2:
         return []
-    # Make sure we sort them by datetime or date
-    events['date'] = pd.to_datetime(events['start_datetime']).dt.date
+    
+    # Use 'start' column if available (pre-parsed datetime) or parse start_datetime
+    if 'start' in events.columns:
+        events['date'] = events['start'].dt.date
+    else:
+        events['date'] = pd.to_datetime(events['start_datetime'], errors='coerce', utc=True).dt.date
+        
+    # Drop rows where date could not be parsed
+    events = events.dropna(subset=['date']).copy()
+    
     conflicts = []
-    visited = set()
-    for i, r1 in events.iterrows():
-        if r1['id'] in visited:
+    
+    # Group by date to avoid O(N^2) complexity across different dates
+    for date, group_df in events.groupby('date'):
+        if len(group_df) < 2:
             continue
-        group = [r1]
-        for j, r2 in events.iterrows():
-            if r1['id'] == r2['id'] or r2['id'] in visited:
+        
+        # Convert group to list of dicts for extremely fast iteration
+        group_events = group_df.to_dict('records')
+        visited = set()
+        
+        for i, r1 in enumerate(group_events):
+            if r1['id'] in visited:
                 continue
-            if r1['date'] != r2['date']:
-                continue
-            dist = haversine_km((r1['latitude'], r1['longitude']), (r2['latitude'], r2['longitude']))
-            if dist <= max_dist_km:
-                group.append(r2)
-        if len(group) >= 2:
-            for r in group:
-                visited.add(r['id'])
-            conflicts.append(group)
+            
+            cluster = [r1]
+            for j, r2 in enumerate(group_events):
+                if i == j or r2['id'] in visited:
+                    continue
+                
+                dist = haversine_km((r1['latitude'], r1['longitude']), (r2['latitude'], r2['longitude']))
+                if dist <= max_dist_km:
+                    cluster.append(r2)
+            
+            if len(cluster) >= 2:
+                for r in cluster:
+                    visited.add(r['id'])
+                conflicts.append(cluster)
+                
     zones = []
     for idx, group in enumerate(conflicts):
         lats = [r['latitude'] for r in group]
@@ -901,27 +927,138 @@ elif PAGE == "Resource Optimizer":
         conflicts = detect_conflicts(scored, max_dist_km=dist_thresh)
         
         if conflicts:
-            st.warning(f"🚨 {len(conflicts)} active Conflict Zones detected! Merged plans recommended below.")
+            # Dropdown to filter by date
+            conflict_dates = sorted(list(set(zone['date'] for zone in conflicts)), reverse=True)
             
-            for zone in conflicts:
-                with st.expander(f"🔴 {zone['zone_id']} — {zone['events_count']} Overlapping Events (Compounded EIS: {zone['compounded_eis']})", expanded=True):
-                    st.markdown("**Overlapping Events in Cluster:**")
-                    for ev in zone['events']:
-                        st.markdown(f"- {ev}")
+            # Format dates nicely for selectbox
+            date_options = [d.strftime("%Y-%m-%d") for d in conflict_dates]
+            sel_date_str = st.selectbox("📅 Select Date to Inspect Conflict Zones", date_options)
+            sel_date = datetime.datetime.strptime(sel_date_str, "%Y-%m-%d").date()
+            
+            # Filter conflicts for the selected date
+            filtered_conflicts = [z for z in conflicts if z['date'] == sel_date]
+            
+            st.warning(f"🚨 {len(filtered_conflicts)} active Conflict Zones detected on {sel_date_str}! Merged plans recommended below.")
+            
+            # Render interactive clustering map
+            st.write("#### 🗺️ Conflict Zones Spatial Cluster Map")
+            fig = go.Figure()
+            
+            # Add trace for all events in active list that are not in conflicts for context (faded grey)
+            active_events = scored[scored.status == 'active'] if 'status' in scored.columns else scored
+            active_events = active_events.dropna(subset=['latitude', 'longitude']).copy()
+            active_events['date'] = pd.to_datetime(active_events['start_datetime'], errors='coerce', utc=True).dt.date
+            active_events_on_day = active_events[active_events['date'] == sel_date]
+            
+            # Find which event IDs are part of conflict zones on this date
+            conflict_event_ids = set()
+            for zone in filtered_conflicts:
+                for ev in zone['details']:
+                    conflict_event_ids.add(ev['id'])
+            
+            isolated_events = active_events_on_day[~active_events_on_day['id'].isin(conflict_event_ids)]
+            
+            if not isolated_events.empty:
+                fig.add_trace(go.Scattermapbox(
+                    lat=isolated_events['latitude'].tolist(),
+                    lon=isolated_events['longitude'].tolist(),
+                    mode='markers',
+                    marker=dict(size=6, color='grey', opacity=0.5),
+                    name="Isolated Active Events",
+                    hovertext=[f"<b>{r.event_cause}</b> (Isolated)" for _, r in isolated_events.iterrows()]
+                ))
+            
+            # Color palette for different conflict zones
+            colors = ['#d11149', '#f17105', '#e6c229', '#1a8fe3', '#00b159', '#6a0dad', '#ff007f']
+            
+            for zone_idx, zone in enumerate(filtered_conflicts):
+                color = colors[zone_idx % len(colors)]
+                
+                # Draw connections from events to command post centroid
+                for ev in zone['details']:
+                    fig.add_trace(go.Scattermapbox(
+                        lat=[ev['latitude'], zone['latitude']],
+                        lon=[ev['longitude'], zone['longitude']],
+                        mode='lines',
+                        line=dict(width=2, color=color),
+                        opacity=0.6,
+                        showlegend=False,
+                        hoverinfo='skip'
+                    ))
                     
-                    st.write("")
-                    col_z1, col_z2, col_z3 = st.columns(3)
-                    col_z1.metric("Compounded EIS", f"{zone['compounded_eis']:.1f}", help="Compounded EIS = max_EIS + 40% of secondary EIS (capped at 100).")
-                    col_z2.metric("Merged Officers Needed", zone['merged_officers'], help="20% resource synergy savings applied due to shared area coordination.")
-                    col_z3.metric("Merged Barricades Needed", zone['merged_barricades'], help="30% resource synergy savings applied.")
-                    
-                    st.markdown("**Actionable Merged Operations Card**:")
-                    st.info(
-                        f"👉 **Consolidated Command**: Establish a single command post at coordinates `[{zone['latitude']:.5f}, {zone['longitude']:.5f}]` "
-                        f"to direct the **{zone['merged_officers']} officers** assigned.\n\n"
-                        f"👉 **Joint Diversion**: Implement a single, coordinated diversion plan. Divert traffic around the entire cluster "
-                        f"boundary to prevent gridlock contagion and route-alternatives collapse."
-                    )
+                    # Individual event marker
+                    fig.add_trace(go.Scattermapbox(
+                        lat=[ev['latitude']],
+                        lon=[ev['longitude']],
+                        mode='markers',
+                        marker=dict(size=10, color=color, symbol='circle'),
+                        name=f"Event in {zone['zone_id']}",
+                        hovertext=f"<b>{ev['event_cause']}</b> at {ev.get('corridor', 'unknown')}<br>Impact Score: {ev['impact_score']:.1f}<br>Zone: {zone['zone_id']}"
+                    ))
+                
+                # Command Post Marker
+                fig.add_trace(go.Scattermapbox(
+                    lat=[zone['latitude']],
+                    lon=[zone['longitude']],
+                    mode='markers',
+                    marker=dict(size=16, color=color, symbol='star'),
+                    name=f"⭐ Command Post ({zone['zone_id']})",
+                    hovertext=f"<b>{zone['zone_id']} Command Post</b><br>Centroid Coordinates: [{zone['latitude']:.5f}, {zone['longitude']:.5f}]<br>Compounded EIS: {zone['compounded_eis']:.1f}<br>Merged Officers: {zone['merged_officers']}"
+                ))
+                
+            fig.update_layout(
+                mapbox_style="carto-positron",
+                mapbox=dict(
+                    center=dict(lat=filtered_conflicts[0]['latitude'], lon=filtered_conflicts[0]['longitude']),
+                    zoom=12.5
+                ),
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=480,
+                legend=dict(orientation="h", y=1.02, x=0)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.write("---")
+            
+            # Show details in columns
+            col_list, col_table = st.columns([1, 1])
+            
+            with col_list:
+                st.write("#### 📝 Consolidated Merged Plans")
+                for zone in filtered_conflicts:
+                    with st.expander(f"🔴 {zone['zone_id']} — {zone['events_count']} Overlapping Events (Compounded EIS: {zone['compounded_eis']})", expanded=True):
+                        st.markdown("**Overlapping Events in Cluster:**")
+                        for ev in zone['events']:
+                            st.markdown(f"- {ev}")
+                        
+                        st.write("")
+                        col_z1, col_z2, col_z3 = st.columns(3)
+                        col_z1.metric("Compounded EIS", f"{zone['compounded_eis']:.1f}", help="Compounded EIS = max_EIS + 40% of secondary EIS (capped at 100).")
+                        col_z2.metric("Merged Officers Needed", zone['merged_officers'], help="20% resource synergy savings applied due to shared area coordination.")
+                        col_z3.metric("Merged Barricades Needed", zone['merged_barricades'], help="30% resource synergy savings applied.")
+                        
+                        st.markdown("**Actionable Merged Operations Card**:")
+                        st.info(
+                            f"👉 **Consolidated Command**: Establish a single command post at coordinates `[{zone['latitude']:.5f}, {zone['longitude']:.5f}]` "
+                            f"to direct the **{zone['merged_officers']} officers** assigned.\n\n"
+                            f"👉 **Joint Diversion**: Implement a single, coordinated diversion plan. Divert traffic around the entire cluster "
+                            f"boundary to prevent gridlock contagion and route-alternatives collapse."
+                        )
+            
+            with col_table:
+                st.write("#### 📊 Summary of Conflict Zones")
+                summary_data = []
+                for zone in filtered_conflicts:
+                    summary_data.append({
+                        "Zone ID": zone['zone_id'],
+                        "Events": zone['events_count'],
+                        "Compounded EIS": zone['compounded_eis'],
+                        "Officers Assigned": zone['merged_officers'],
+                        "Barricades": zone['merged_barricades'],
+                        "Command Post Coordinates": f"{zone['latitude']:.4f}, {zone['longitude']:.4f}"
+                    })
+                st.dataframe(pd.DataFrame(summary_data), use_container_width=True)
+                
         else:
             st.success("✅ No conflict zones detected. All active events are isolated (> 3 km apart).")
 
