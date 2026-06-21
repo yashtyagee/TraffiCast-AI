@@ -1,3 +1,12 @@
+---
+title: TraffiCast AI
+emoji: 🚦
+colorFrom: blue
+colorTo: gray
+sdk: docker
+pinned: false
+---
+
 # 🚦 TraffiCast AI — Event-Driven Congestion Intelligence
 
 **Flipkart Gridlock Hackathon 2.0 · Problem Statement 2**
