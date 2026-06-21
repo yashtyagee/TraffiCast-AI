@@ -7,14 +7,14 @@ During that time port 7860 is closed, so HF's health checker never sees a
 response and the Space stays stuck on "Starting...".
 
 Solution: This script immediately starts a tiny HTTP server on port 7860 that
-returns 200 OK to any request. Once Streamlit is ready and binds to 7860,
-this placeholder server shuts down automatically (bind conflict) and
-Streamlit takes over.
+returns 200 OK to any request.  Once Streamlit is ready to bind, the
+placeholder server is shut down and Streamlit takes over port 7860.
 """
-import subprocess, threading, time, sys, os
+import subprocess, threading, time, sys, os, signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = 7860
+
 PLACEHOLDER_HTML = b"""<!DOCTYPE html>
 <html><head><title>TraffiCast AI</title>
 <style>
@@ -30,32 +30,34 @@ margin:0 auto 16px}
 <p>Loading TraffiCast AI &mdash; please wait&hellip;</p>
 </div></body></html>"""
 
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
-        self.write = self.wfile.write
-        self.write(PLACEHOLDER_HTML)
-    def log_message(self, fmt, *args):
-        pass  # silence logs
+        self.wfile.write(PLACEHOLDER_HTML)
 
-def run_placeholder():
-    """Run placeholder HTTP server until Streamlit takes over the port."""
-    try:
-        srv = HTTPServer(("0.0.0.0", PORT), HealthHandler)
-        print(f"[startup] Placeholder health-check server listening on :{PORT}")
-        srv.serve_forever()
-    except OSError:
-        # Port already taken by Streamlit – expected, just exit
-        print("[startup] Port taken by Streamlit, placeholder exiting.")
+    def log_message(self, fmt, *args):
+        pass  # silence request logs
+
 
 def main():
-    # 1. Start placeholder server in a background thread
-    t = threading.Thread(target=run_placeholder, daemon=True)
+    # 1. Start placeholder HTTP server on port 7860
+    srv = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
+    print(f"[startup] Placeholder health-check server listening on :{PORT}")
 
-    # 2. Launch Streamlit as a subprocess
+    # 2. Wait long enough for HF health checker to get a 200 and mark
+    #    the Space as "Running" (usually takes a few seconds).
+    #    Then shut down the placeholder to free the port for Streamlit.
+    time.sleep(10)
+    print("[startup] Shutting down placeholder server to free port for Streamlit...")
+    srv.shutdown()
+    time.sleep(1)  # give OS time to release the socket
+
+    # 3. Launch Streamlit — it will now bind to port 7860 successfully
     cmd = [
         sys.executable, "-m", "streamlit", "run", "app.py",
         "--server.port=7860",
@@ -69,8 +71,9 @@ def main():
     print(f"[startup] Launching Streamlit: {' '.join(cmd)}")
     proc = subprocess.Popen(cmd, cwd="/app")
 
-    # 3. Wait for Streamlit to exit (should run forever)
+    # 4. Wait for Streamlit to exit (should run forever)
     sys.exit(proc.wait())
+
 
 if __name__ == "__main__":
     main()
