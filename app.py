@@ -88,8 +88,6 @@ PAGE = st.sidebar.radio("Navigate", [
     "Shift Bandobast Planner",
     "Public Diversion Advisory",
     "Conflict + Dispatch",
-    "Waterlogging / Chokepoints",
-    "Crane Pre-Positioning",
     "Upstream Risk Buffer",
     "Post-Event Learning",
     "Model Trust & Performance",
@@ -349,178 +347,241 @@ if PAGE == "Command Center":
     st.title("Command Center")
     st.caption("Live operating picture — every event scored for impact in real time.")
 
-    # Unified headline metric: Event Impact Score (EIS)
-    eis_val = scored.impact_score.mean()
-    if eis_val >= 76:
-        eis_color, eis_band = "#d11149", "🔴 CRITICAL RISK"
-    elif eis_val >= 51:
-        eis_color, eis_band = "#f17105", "🟠 HIGH RISK"
-    elif eis_val >= 26:
-        eis_color, eis_band = "#e6c229", "🟡 MODERATE RISK"
-    else:
-        eis_color, eis_band = "#1a8fe3", "🟢 LOW RISK"
+    tab_live, tab_water = st.tabs(["📊 Live Incident Map", "🌧️ Waterlogging & Chokepoints"])
 
-    st.markdown(f"""
-    <div style="background: linear-gradient(135deg, #161c2d 0%, #0d1117 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 25px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15);">
-        <div style="font-size: 13px; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">Historical Baseline Event Impact Score (EIS)</div>
-        <div style="font-size: 64px; color: {eis_color}; font-weight: 800; margin: 5px 0; font-family: 'Outfit', sans-serif;">{eis_val:.1f} <span style="font-size: 24px; color: #64748b; font-weight: 500;">/ 100</span></div>
-        <div style="font-size: 18px; color: {eis_color}; font-weight: 700; margin: 8px 0;">{eis_band}</div>
-        <div style="font-size: 14px; color: #94a3b8; max-width: 650px; margin: 10px auto 0;">
-            Baseline average of road closure probability, severity, predicted duration, and local bottleneck density across historical events.
+    with tab_live:
+        # Unified headline metric: Event Impact Score (EIS)
+        eis_val = scored.impact_score.mean()
+        if eis_val >= 76:
+            eis_color, eis_band = "#d11149", "🔴 CRITICAL RISK"
+        elif eis_val >= 51:
+            eis_color, eis_band = "#f17105", "🟠 HIGH RISK"
+        elif eis_val >= 26:
+            eis_color, eis_band = "#e6c229", "🟡 MODERATE RISK"
+        else:
+            eis_color, eis_band = "#1a8fe3", "🟢 LOW RISK"
+
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #161c2d 0%, #0d1117 100%); border: 1px solid #1e293b; border-radius: 16px; padding: 25px; margin-bottom: 30px; text-align: center; box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.15);">
+            <div style="font-size: 13px; color: #60a5fa; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px;">Historical Baseline Event Impact Score (EIS)</div>
+            <div style="font-size: 64px; color: {eis_color}; font-weight: 800; margin: 5px 0; font-family: 'Outfit', sans-serif;">{eis_val:.1f} <span style="font-size: 24px; color: #64748b; font-weight: 500;">/ 100</span></div>
+            <div style="font-size: 18px; color: {eis_color}; font-weight: 700; margin: 8px 0;">{eis_band}</div>
+            <div style="font-size: 14px; color: #94a3b8; max-width: 650px; margin: 10px auto 0;">
+                Baseline average of road closure probability, severity, predicted duration, and local bottleneck density across historical events.
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Total events", f"{len(scored):,}")
+        c2.metric("Critical", int((scored.tier == "CRITICAL").sum()))
+        c3.metric("High", int((scored.tier == "HIGH").sum()))
+        c4.metric("Need diversion", int((scored.longblock_prob > 0.5).sum()))
+        c5.metric("Avg EIS", f"{scored.impact_score.mean():.1f}")
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total events", f"{len(scored):,}")
-    c2.metric("Critical", int((scored.tier == "CRITICAL").sum()))
-    c3.metric("High", int((scored.tier == "HIGH").sum()))
-    c4.metric("Need diversion", int((scored.longblock_prob > 0.5).sum()))
-    c5.metric("Avg EIS", f"{scored.impact_score.mean():.1f}")
+        with st.expander("🔍 Filters", expanded=True):
+            f1, f2, f3 = st.columns(3)
+            sel_tier = f1.multiselect("Impact tier", list(TIER_COLOR), default=["CRITICAL", "HIGH"])
+            sel_cause = f2.multiselect("Cause", CAUSES, default=[])
+            sel_zone = f3.multiselect("Zone", ZONES, default=[])
 
-    with st.expander("🔍 Filters", expanded=True):
-        f1, f2, f3 = st.columns(3)
-        sel_tier = f1.multiselect("Impact tier", list(TIER_COLOR), default=["CRITICAL", "HIGH"])
-        sel_cause = f2.multiselect("Cause", CAUSES, default=[])
-        sel_zone = f3.multiselect("Zone", ZONES, default=[])
+        view = scored.copy()
+        if sel_tier:  view = view[view.tier.isin(sel_tier)]
+        if sel_cause: view = view[view.event_cause.isin(sel_cause)]
+        if sel_zone:  view = view[view.zone.isin(sel_zone)]
+        view = view.dropna(subset=["latitude", "longitude"])
+        view = view[(view.latitude.between(12.7, 13.3)) & (view.longitude.between(77.3, 77.9))]
 
-    view = scored.copy()
-    if sel_tier:  view = view[view.tier.isin(sel_tier)]
-    if sel_cause: view = view[view.event_cause.isin(sel_cause)]
-    if sel_zone:  view = view[view.zone.isin(sel_zone)]
-    view = view.dropna(subset=["latitude", "longitude"])
-    view = view[(view.latitude.between(12.7, 13.3)) & (view.longitude.between(77.3, 77.9))]
-
-    st.markdown(f"**{len(view):,} events shown**")
-    mc, tc = st.columns([2, 1])
-    with mc:
-        if len(view):
-            if HAS_FOLIUM:
-                m = folium.Map(location=[12.9716, 77.5946], zoom_start=11, tiles="cartodbpositron")
-                marker_cluster = MarkerCluster().add_to(m)
-                
-                # Sample to prevent browser lag (limit to 1000 markers on screen)
-                sample_view = view.sample(min(len(view), 1000), random_state=42)
-                for _, r in sample_view.iterrows():
-                    color = TIER_COLOR.get(r.tier, "blue")
-                    popup_html = f"""
-                    <div style="font-family: 'Outfit', sans-serif; font-size: 13px; color: #1e293b;">
-                        <h4 style="margin: 0; color: {color}; font-weight: 700;">{r.event_cause}</h4>
-                        <b>Tier</b>: {r.tier}<br/>
-                        <b>Impact Score</b>: {r.impact_score}<br/>
-                        <b>Corridor</b>: {r.get('corridor', 'unknown')}<br/>
-                        <b>Est. Duration</b>: {r.get('predicted_duration_min', 0.0):.0f} min<br/>
-                        <b>Closure Probability</b>: {r.closure_prob:.1%}<br/>
-                    </div>
-                    """
-                    icon_color = "red" if r.tier == "CRITICAL" else "orange" if r.tier == "HIGH" else "beige" if r.tier == "MODERATE" else "blue"
-                    folium.Marker(
-                        location=[r.latitude, r.longitude],
-                        popup=folium.Popup(popup_html, max_width=300),
-                        icon=folium.Icon(color=icon_color, icon="info-sign")
-                    ).add_to(marker_cluster)
-                
-                st_folium(m, height=560, use_container_width=True, key="cc_folium", returned_objects=[])
-            else:
-                fig = px.scatter_mapbox(
-                    view.sample(min(len(view), 2500), random_state=1),
-                    lat="latitude", lon="longitude", color="tier",
-                    color_discrete_map=TIER_COLOR, size="impact_score", size_max=10, zoom=10.3,
-                    hover_data={"event_cause": True, "corridor": True, "impact_score": True,
-                                "closure_prob": ":.2f", "longblock_prob": ":.2f",
-                                "latitude": False, "longitude": False},
-                    height=560)
-                fig.update_layout(mapbox_style="carto-positron", margin=dict(l=0, r=0, t=0, b=0),
-                                  legend=dict(orientation="h", y=1.02))
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No events match the current filters.")
-    with tc:
-        st.subheader("Top-impact events")
-        top = view.sort_values("impact_score", ascending=False).head(12)
-        if len(top) > 0:
-            options = [f"{r.event_cause} @ {str(r.get('corridor','?'))[:20]} (Score: {r.impact_score})" for _, r in top.iterrows()]
-            selected_option = st.selectbox("🔍 Inspect Event Details & SHAP", options, index=0)
-            selected_idx = options.index(selected_option)
-            selected_event = top.iloc[selected_idx]
-            
-            # Show detailed card
-            st.markdown(f"### {tier_badge(selected_event.tier)} **{selected_event.event_cause}**", unsafe_allow_html=True)
-            st.markdown(f"**Location**: {selected_event.get('address', 'unknown')}")
-            st.markdown(f"**Junction**: {selected_event.get('junction', 'unknown')} | **Corridor**: {selected_event.get('corridor', 'unknown')}")
-            
-            # Metrics
-            m1, m2 = st.columns(2)
-            est_dur = selected_event.get('predicted_duration_min', 0.0)
-            m1.metric("Est. Duration", f"{est_dur:.0f} min" if est_dur > 0 else "unknown")
-            m2.metric("Closure Prob", f"{selected_event.closure_prob:.0%}")
-            
-            # Recommended manpower
-            need_off = int(np.ceil(selected_event.impact_score / 20))
-            st.markdown(f"**Suggested Deployment**: 🚓 `{need_off}` Officers | 🚧 `{'Required' if selected_event.closure_prob > 0.5 else 'None'}` Barricades")
-            
-            # SHAP bar chart for this event
-            st.markdown("##### 🧠 Decision Contribution (SHAP)")
-            try:
-                ev_dict = selected_event.to_dict()
-                if isinstance(ev_dict.get('start'), pd.Timestamp):
-                    ev_dict['start_datetime'] = ev_dict['start'].isoformat()
+        st.markdown(f"**{len(view):,} events shown**")
+        mc, tc = st.columns([2, 1])
+        with mc:
+            if len(view):
+                if HAS_FOLIUM:
+                    m = folium.Map(location=[12.9716, 77.5946], zoom_start=11, tiles="cartodbpositron")
+                    marker_cluster = MarkerCluster().add_to(m)
+                    
+                    # Sample to prevent browser lag (limit to 1000 markers on screen)
+                    sample_view = view.sample(min(len(view), 1000), random_state=42)
+                    for _, r in sample_view.iterrows():
+                        color = TIER_COLOR.get(r.tier, "blue")
+                        popup_html = f"""
+                        <div style="font-family: 'Outfit', sans-serif; font-size: 13px; color: #1e293b;">
+                            <h4 style="margin: 0; color: {color}; font-weight: 700;">{r.event_cause}</h4>
+                            <b>Tier</b>: {r.tier}<br/>
+                            <b>Impact Score</b>: {r.impact_score}<br/>
+                            <b>Corridor</b>: {r.get('corridor', 'unknown')}<br/>
+                            <b>Est. Duration</b>: {r.get('predicted_duration_min', 0.0):.0f} min<br/>
+                            <b>Closure Probability</b>: {r.closure_prob:.1%}<br/>
+                        </div>
+                        """
+                        icon_color = "red" if r.tier == "CRITICAL" else "orange" if r.tier == "HIGH" else "beige" if r.tier == "MODERATE" else "blue"
+                        folium.Marker(
+                            location=[r.latitude, r.longitude],
+                            popup=folium.Popup(popup_html, max_width=300),
+                            icon=folium.Icon(color=icon_color, icon="info-sign")
+                        ).add_to(marker_cluster)
+                    
+                    st_folium(m, height=560, use_container_width=True, key="cc_folium", returned_objects=[])
                 else:
-                    ev_dict['start_datetime'] = str(ev_dict.get('start_datetime', datetime.datetime.now().isoformat()))
-                contrib = M.explain_event(bundle, ev_dict, "closure", top=5)
-                ex = pd.DataFrame({"feature": contrib.index, "contribution": contrib.values})
-                fig = px.bar(ex[::-1], x="contribution", y="feature", orientation="h",
-                             color="contribution", color_continuous_scale="RdBu_r", height=220)
-                fig.update_layout(margin=dict(l=0, r=0, t=5, b=5), coloraxis_showscale=False, xaxis_title="", yaxis_title="")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as ex_err:
-                st.caption(f"No explanation chart: {ex_err}")
-            
-            st.divider()
-        else:
-            st.info("No events match the current filters.")
+                    fig = px.scatter_mapbox(
+                        view.sample(min(len(view), 2500), random_state=1),
+                        lat="latitude", lon="longitude", color="tier",
+                        color_discrete_map=TIER_COLOR, size="impact_score", size_max=10, zoom=10.3,
+                        hover_data={"event_cause": True, "corridor": True, "impact_score": True,
+                                    "closure_prob": ":.2f", "longblock_prob": ":.2f",
+                                    "latitude": False, "longitude": False},
+                        height=560)
+                    fig.update_layout(mapbox_style="carto-positron", margin=dict(l=0, r=0, t=0, b=0),
+                                      legend=dict(orientation="h", y=1.02))
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No events match the current filters.")
+        with tc:
+            st.subheader("Top-impact events")
+            top = view.sort_values("impact_score", ascending=False).head(12)
+            if len(top) > 0:
+                options = [f"{r.event_cause} @ {str(r.get('corridor','?'))[:20]} (Score: {r.impact_score})" for _, r in top.iterrows()]
+                selected_option = st.selectbox("🔍 Inspect Event Details & SHAP", options, index=0)
+                selected_idx = options.index(selected_option)
+                selected_event = top.iloc[selected_idx]
+                
+                # Show detailed card
+                st.markdown(f"### {tier_badge(selected_event.tier)} **{selected_event.event_cause}**", unsafe_allow_html=True)
+                st.markdown(f"**Location**: {selected_event.get('address', 'unknown')}")
+                st.markdown(f"**Junction**: {selected_event.get('junction', 'unknown')} | **Corridor**: {selected_event.get('corridor', 'unknown')}")
+                
+                # Metrics
+                m1, m2 = st.columns(2)
+                est_dur = selected_event.get('predicted_duration_min', 0.0)
+                m1.metric("Est. Duration", f"{est_dur:.0f} min" if est_dur > 0 else "unknown")
+                m2.metric("Closure Prob", f"{selected_event.closure_prob:.0%}")
+                
+                # Recommended manpower
+                need_off = int(np.ceil(selected_event.impact_score / 20))
+                st.markdown(f"**Suggested Deployment**: 🚓 `{need_off}` Officers | 🚧 `{'Required' if selected_event.closure_prob > 0.5 else 'None'}` Barricades")
+                
+                # SHAP bar chart for this event
+                st.markdown("##### 🧠 Decision Contribution (SHAP)")
+                try:
+                    ev_dict = selected_event.to_dict()
+                    if isinstance(ev_dict.get('start'), pd.Timestamp):
+                        ev_dict['start_datetime'] = ev_dict['start'].isoformat()
+                    else:
+                        ev_dict['start_datetime'] = str(ev_dict.get('start_datetime', datetime.datetime.now().isoformat()))
+                    contrib = M.explain_event(bundle, ev_dict, "closure", top=5)
+                    ex = pd.DataFrame({"feature": contrib.index, "contribution": contrib.values})
+                    fig = px.bar(ex[::-1], x="contribution", y="feature", orientation="h",
+                                 color="contribution", color_continuous_scale="RdBu_r", height=220)
+                    fig.update_layout(margin=dict(l=0, r=0, t=5, b=5), coloraxis_showscale=False, xaxis_title="", yaxis_title="")
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as ex_err:
+                    st.caption(f"No explanation chart: {ex_err}")
+                
+                st.divider()
+            else:
+                st.info("No events match the current filters.")
 
-    # Event Spatiotemporal Risk Heatmap (7x24 grid colored by historical average EIS)
-    st.divider()
-    st.subheader("🗓️ Event Spatiotemporal Risk Heatmap")
-    st.caption("Historical average impact score (EIS) across days of the week and hours of the day. Colored by average EIS to show peak risk windows.")
-    
-    # Filter cause for heatmap
-    heat_cause = st.selectbox("Filter Heatmap by Event Cause", ["All Causes"] + CAUSES, index=0)
-    heat_df = scored.copy()
-    if heat_cause != "All Causes":
-        heat_df = heat_df[heat_df.event_cause == heat_cause]
+        # Event Spatiotemporal Risk Heatmap (7x24 grid colored by historical average EIS)
+        st.divider()
+        st.subheader("🗓️ Event Spatiotemporal Risk Heatmap")
+        st.caption("Historical average impact score (EIS) across days of the week and hours of the day. Colored by average EIS to show peak risk windows.")
         
-    if len(heat_df) > 0:
-        # Derive dow and hour from the start datetime column
-        if 'dow' not in heat_df.columns:
-            heat_df['dow'] = heat_df['start'].dt.dayofweek
-        if 'hour' not in heat_df.columns:
-            heat_df['hour'] = heat_df['start'].dt.hour
-        # Group by DOW (0-6) and Hour (0-23)
-        grid = heat_df.groupby(['dow', 'hour'])['impact_score'].mean().unstack(fill_value=0)
-        grid = grid.reindex(index=range(7), columns=range(24), fill_value=0)
+        # Filter cause for heatmap
+        heat_cause = st.selectbox("Filter Heatmap by Event Cause", ["All Causes"] + CAUSES, index=0)
+        heat_df = scored.copy()
+        if heat_cause != "All Causes":
+            heat_df = heat_df[heat_df.event_cause == heat_cause]
+            
+        if len(heat_df) > 0:
+            # Derive dow and hour from the start datetime column
+            if 'dow' not in heat_df.columns:
+                heat_df['dow'] = heat_df['start'].dt.dayofweek
+            if 'hour' not in heat_df.columns:
+                heat_df['hour'] = heat_df['start'].dt.hour
+            # Group by DOW (0-6) and Hour (0-23)
+            grid = heat_df.groupby(['dow', 'hour'])['impact_score'].mean().unstack(fill_value=0)
+            grid = grid.reindex(index=range(7), columns=range(24), fill_value=0)
+            
+            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            hours = [f"{h:02d}:00" for h in range(24)]
+            
+            fig_heat = px.imshow(
+                grid.values,
+                labels=dict(x="Hour of Day", y="Day of Week", color="Average EIS"),
+                x=hours,
+                y=day_names,
+                color_continuous_scale="YlOrRd",
+                aspect="auto",
+                height=320
+            )
+            fig_heat.update_layout(
+                margin=dict(l=0, r=0, t=10, b=10),
+                coloraxis_colorbar=dict(title="EIS")
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+            st.info("No data available for this cause to display heatmap.")
+
+    with tab_water:
+        st.subheader("🌧️ Waterlogging & Chokepoint Analyzer")
+        st.caption("🟡 PS2 event cause analyzer: Identifies unplanned road waterlogging events, historical hotspots, and clearance times.")
         
-        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        hours = [f"{h:02d}:00" for h in range(24)]
+        water_df = raw[raw.event_cause == "water_logging"].copy()
+        if len(water_df) == 0:
+            water_df = raw[raw.description.fillna('').str.lower().str.contains("water|rain|flood|monsoon|clog")].copy()
+            
+        st.markdown(f"#### Historical Waterlogging Incident Analytics ({len(water_df)} occurrences)")
         
-        fig_heat = px.imshow(
-            grid.values,
-            labels=dict(x="Hour of Day", y="Day of Week", color="Average EIS"),
-            x=hours,
-            y=day_names,
-            color_continuous_scale="YlOrRd",
-            aspect="auto",
-            height=320
-        )
-        fig_heat.update_layout(
-            margin=dict(l=0, r=0, t=10, b=10),
-            coloraxis_colorbar=dict(title="EIS")
-        )
-        st.plotly_chart(fig_heat, use_container_width=True)
-    else:
-        st.info("No data available for this cause to display heatmap.")
+        if len(water_df) > 0:
+            w1, w2, w3 = st.columns(3)
+            w1.metric("Average Clearance Time", f"{water_df.duration_min.mean():.1f} min")
+            w2.metric("Closure rate for waterlogging", f"{water_df.requires_road_closure.mean():.1%}")
+            w3.metric("Critical events", int((water_df.priority == "Critical").sum()))
+            
+            fig_water = go.Figure()
+            fig_water.add_trace(go.Scattermapbox(
+                lat=water_df['latitude'].tolist(),
+                lon=water_df['longitude'].tolist(),
+                mode='markers',
+                marker=dict(size=8, color='blue', opacity=0.6),
+                text=[f"Location: {r.get('address','?')}<br>Duration: {r.get('duration_min',0):.1f} min" for _, r in water_df.iterrows()],
+                name="Waterlogging Incident"
+            ))
+            
+            GEO = water_df.dropna(subset=['latitude','longitude']).copy()
+            if len(GEO) > 10:
+                coords = np.radians(GEO[['latitude','longitude']].values)
+                GEO['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(coords)
+                hot = (GEO[GEO.cluster>=0].groupby('cluster')
+                       .agg(events=('id','size'), lat=('latitude','mean'), lon=('longitude','mean'))
+                       .reset_index())
+                
+                if not hot.empty:
+                    fig_water.add_trace(go.Scattermapbox(
+                        lat=hot['lat'].tolist(),
+                        lon=hot['lon'].tolist(),
+                        mode='markers',
+                        marker=dict(size=18, color='darkred', symbol='circle'),
+                        text=[f"Waterlogging Hotspot Cluster {r.cluster+1}<br>Historical Events: {r.events}" for _, r in hot.iterrows()],
+                        name="⚠️ Waterlogging Hotspots"
+                    ))
+                    
+            fig_water.update_layout(
+                mapbox_style="carto-positron",
+                mapbox=dict(center=dict(lat=12.9716, lon=77.5946), zoom=11.0),
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=450
+            )
+            st.plotly_chart(fig_water, use_container_width=True)
+            
+            st.write("#### 🛡️ Pre-Monsoon Mitigation Checklist")
+            st.info(
+                "👉 **Pre-position Pumps**: Move water pumps and clearance crews near identified cluster centers.\n\n"
+                "👉 **Gully Cleansing**: Prioritize cleaning of drains on corridors with >2 waterlogging incidents annually.\n\n"
+                "👉 **Strategic Diversion Point Pre-Setup**: Pre-plot diversion advisory targets for monsoon shifts."
+            )
+        else:
+            st.info("No waterlogging incidents found in the current dataset.")
 
 # =========================================================================== #
 #  2 · SIMULATE EVENT
@@ -712,7 +773,60 @@ elif PAGE == "Event Playbook Generator":
                     + f"3. **Diversion**: Monitor entry junctions of corridors: {', '.join(playbook['top_corridors'][:3])}.\n"
                     f"4. **Public Advisory**: Broadcast diversion recommendations immediately to dispatch channels."
                 )
-                st.text_area("SOP Briefing Text (Copyable)", sop_text, height=200)
+                crane_string_html = f"and pre-position a heavy recovery vehicle/crane (Crane Probability: {playbook['crane_rate']:.1%})." if playbook['crane_rate'] > 0.3 else "."
+                
+                sop_html = f"""
+                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 20px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); color: #f8fafc; font-family: 'Outfit', sans-serif;">
+                  <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <div style="background: #3b82f6; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; margin-right: 10px; font-weight: bold; font-size: 16px;">📋</div>
+                    <div>
+                      <h4 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #60a5fa;">Standard Operating Procedure</h4>
+                      <h3 style="margin: 0; font-size: 16px; font-weight: 800; color: #f1f5f9; text-transform: uppercase;">{sel_cause.upper()}</h3>
+                    </div>
+                  </div>
+                  
+                  <div style="background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3b82f6; padding: 10px 12px; border-radius: 4px; margin-bottom: 15px;">
+                    <strong style="color: #93c5fd; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 2px;">Objective</strong>
+                    <span style="font-size: 13px; line-height: 1.4;">Mitigate event-related traffic delay and prevent local contagion.</span>
+                  </div>
+                  
+                  <div style="display: flex; flex-direction: column; gap: 10px; font-size: 12px;">
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                      <div style="background: #1e1b4b; color: #818cf8; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px;">1</div>
+                      <div>
+                        <strong style="color: #c7d2fe; display: block;">Manpower</strong>
+                        <span style="color: #cbd5e1;">Deploy <span style="color: #818cf8; font-weight: 700;">{playbook['recommended_officers']}</span> officers to key junctions along affected corridors.</span>
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                      <div style="background: #1e1b4b; color: #818cf8; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px;">2</div>
+                      <div>
+                        <strong style="color: #c7d2fe; display: block;">Barricading</strong>
+                        <span style="color: #cbd5e1;">Deploy <span style="color: #818cf8; font-weight: 700;">{playbook['recommended_barricades']}</span> static barricades {crane_string_html}</span>
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                      <div style="background: #1e1b4b; color: #818cf8; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px;">3</div>
+                      <div>
+                        <strong style="color: #c7d2fe; display: block;">Diversion</strong>
+                        <span style="color: #cbd5e1;">Monitor entry junctions of corridors: <span style="color: #818cf8; font-weight: 600;">{', '.join(playbook['top_corridors'][:3])}</span>.</span>
+                      </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-start; gap: 8px;">
+                      <div style="background: #1e1b4b; color: #818cf8; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px;">4</div>
+                      <div>
+                        <strong style="color: #c7d2fe; display: block;">Public Advisory</strong>
+                        <span style="color: #cbd5e1;">Broadcast diversion recommendations immediately to dispatch channels.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style="margin-top: 10px;"></div>
+                """
+                st.text_area("SOP Briefing Text (Copyable)", sop_text, height=120)
             
             st.caption("*(Note: Recommended officer and barricade counts are planning heuristics derived from historical event durations (p50/25) and road closure rates (closure*4, closure*12), designed to be calibrated once Bengaluru Traffic Police shares department roster data.)*")
 
@@ -901,224 +1015,264 @@ elif PAGE == "Conflict + Dispatch":
     st.caption("🟢 Core PS2: Recommends optimal manpower across simultaneous/conflicting events.")
     st.caption("Built on the historical dataset and ready to ingest a live BTP feed.")
     
-    st.markdown("### 🚨 Conflict Zone Detection")
-    dist_thresh = st.slider("Conflict Distance Threshold (km)", 1.0, 5.0, 3.0, 0.5)
+    tab_dispatch, tab_crane = st.tabs(["🔀 Active Conflict Dispatch", "🏗️ Crane Pre-Positioning"])
     
-    conflicts = detect_conflicts(scored, max_dist_km=dist_thresh)
-    
-    if conflicts:
-        conflict_dates = sorted(list(set(zone['date'] for zone in conflicts)), reverse=True)
-        date_options = [d.strftime("%Y-%m-%d") for d in conflict_dates]
-        sel_date_str = st.selectbox("📅 Select Date to Inspect Conflict Zones", date_options)
-        sel_date = datetime.datetime.strptime(sel_date_str, "%Y-%m-%d").date()
+    with tab_dispatch:
+        st.markdown("### 🚨 Conflict Zone Detection")
+        dist_thresh = st.slider("Conflict Distance Threshold (km)", 1.0, 5.0, 3.0, 0.5)
         
-        filtered_conflicts = [z for z in conflicts if z['date'] == sel_date]
-        st.warning(f"🚨 {len(filtered_conflicts)} active Conflict Zones detected on {sel_date_str}!")
+        conflicts = detect_conflicts(scored, max_dist_km=dist_thresh)
         
-        fig = go.Figure()
-        colors = ['#d11149', '#f17105', '#e6c229', '#1a8fe3', '#00b159']
-        
-        for zone_idx, zone in enumerate(filtered_conflicts):
-            color = colors[zone_idx % len(colors)]
-            for ev in zone['details']:
+        if conflicts:
+            conflict_dates = sorted(list(set(zone['date'] for zone in conflicts)), reverse=True)
+            date_options = [d.strftime("%Y-%m-%d") for d in conflict_dates]
+            sel_date_str = st.selectbox("📅 Select Date to Inspect Conflict Zones", date_options)
+            sel_date = datetime.datetime.strptime(sel_date_str, "%Y-%m-%d").date()
+            
+            filtered_conflicts = [z for z in conflicts if z['date'] == sel_date]
+            st.warning(f"🚨 {len(filtered_conflicts)} active Conflict Zones detected on {sel_date_str}!")
+            
+            fig = go.Figure()
+            colors = ['#d11149', '#f17105', '#e6c229', '#1a8fe3', '#00b159']
+            
+            for zone_idx, zone in enumerate(filtered_conflicts):
+                color = colors[zone_idx % len(colors)]
+                for ev in zone['details']:
+                    fig.add_trace(go.Scattermapbox(
+                        lat=[ev['latitude'], zone['latitude']],
+                        lon=[ev['longitude'], zone['longitude']],
+                        mode='lines', line=dict(width=2, color=color), showlegend=False
+                    ))
+                    fig.add_trace(go.Scattermapbox(
+                        lat=[ev['latitude']], lon=[ev['longitude']],
+                        mode='markers', marker=dict(size=10, color=color),
+                        name=f"Event in {zone['zone_id']}",
+                        hovertext=f"Cause: {ev['event_cause']}"
+                    ))
                 fig.add_trace(go.Scattermapbox(
-                    lat=[ev['latitude'], zone['latitude']],
-                    lon=[ev['longitude'], zone['longitude']],
-                    mode='lines', line=dict(width=2, color=color), showlegend=False
+                    lat=[zone['latitude']], lon=[zone['longitude']],
+                    mode='markers', marker=dict(size=16, color=color, symbol='star'),
+                    name=f"⭐ Command Post ({zone['zone_id']})"
                 ))
-                fig.add_trace(go.Scattermapbox(
-                    lat=[ev['latitude']], lon=[ev['longitude']],
-                    mode='markers', marker=dict(size=10, color=color),
-                    name=f"Event in {zone['zone_id']}",
-                    hovertext=f"Cause: {ev['event_cause']}"
-                ))
-            fig.add_trace(go.Scattermapbox(
-                lat=[zone['latitude']], lon=[zone['longitude']],
-                mode='markers', marker=dict(size=16, color=color, symbol='star'),
-                name=f"⭐ Command Post ({zone['zone_id']})"
+                
+            fig.update_layout(
+                mapbox_style="carto-positron", mapbox=dict(center=dict(lat=filtered_conflicts[0]['latitude'], lon=filtered_conflicts[0]['longitude']), zoom=12.0),
+                margin=dict(l=0, r=0, t=0, b=0), height=400, legend=dict(orientation="h", y=1.02)
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.write("---")
+            st.markdown("### 🔀 Nearest-Hub Greedy Dispatch")
+            st.caption("Matches available manpower from real police stations to the active incidents in the conflict zone.")
+            
+            total_pool = st.number_input("Total Officers Pool at Stations", value=50, min_value=10, max_value=300, step=10)
+            
+            active_list = []
+            for zone in filtered_conflicts:
+                for ev in zone['details']:
+                    active_list.append(ev)
+                    
+            if active_list:
+                stations_dict = M.extract_station_coords(raw)
+                dispatch_results = M.nearest_hub_dispatch(active_list, stations_dict, total_pool)
+                
+                disp_df = pd.DataFrame(dispatch_results["dispatches"])
+                if not disp_df.empty:
+                    st.write("#### Recommended Station Dispatch Plan")
+                    disp_df.columns = ["Incident Cause", "Incident Address", "Dispatch Station", "Officers Sent", "Travel Distance (km)", "Est. ETA (min)"]
+                    st.dataframe(disp_df.style.background_gradient(subset=["Est. ETA (min)"], cmap="Reds_r"), use_container_width=True)
+                    
+                    st.write("#### Remaining Officers at Station Hubs")
+                    pool_df = pd.DataFrame(dispatch_results["stations_leftover"])
+                    if not pool_df.empty:
+                        pool_df.columns = ["Police Station Hub", "Available Manpower Remaining"]
+                        st.dataframe(pool_df, use_container_width=True)
+                    else:
+                        st.info("All dispatch pools allocated. No remaining manpower.")
+                    
+                    st.caption("*Disclaimer: Planning heuristic: 1 officer dispatched per 20 points of Event Impact Score (calibratable when roster data is integrated).*")
+                else:
+                    st.info("All dispatch pools allocated.")
+            else:
+                st.info("No active incidents to dispatch officers to.")
+        else:
+            st.info("No conflict zones detected on this date.")
+
+    with tab_crane:
+        st.subheader("🏗️ Crane & Tow Resource Deployment")
+        st.caption("🟡 PS2 specialized resource deployment: Predicts accident and vehicle breakdown event locations using spatiotemporal clustering to pre-position tow recovery vehicles.")
+        
+        bd_df = raw[raw.event_cause.isin(["accident", "vehicle_breakdown"])].copy()
+        if len(bd_df) == 0:
+            bd_df = raw[raw.description.fillna('').str.lower().str.contains("accident|breakdown|tow|crane")].copy()
+            
+        st.write(f"#### Accident & Breakdown Incident Hotspots ({len(bd_df)} occurrences)")
+        
+        if len(bd_df) > 0:
+            corr_risk = bd_df.groupby("corridor").agg(
+                events=("id", "size"),
+                avg_duration=("duration_min", "mean"),
+                closure_rate=("requires_road_closure", "mean")
+            ).reset_index().sort_values("events", ascending=False).head(10)
+            
+            st.write("##### 📍 Top Breakdown/Accident Impacted Corridors (Crane Pre-Positioning Targets)")
+            corr_risk.columns = ["Corridor Path", "Historical Incidents", "Avg Clearance (min)", "Road Closure Rate"]
+            st.dataframe(corr_risk.style.format({"Avg Clearance (min)": "{:.1f}", "Road Closure Rate": "{:.1%}"}), use_container_width=True)
+            
+            # DBSCAN to predict / locate the highest accident risk point
+            bd_geo = bd_df.dropna(subset=['latitude', 'longitude']).copy()
+            pred_lat, pred_lon = None, None
+            pred_events_count = 0
+            hot_bd = pd.DataFrame()
+            
+            if len(bd_geo) > 5:
+                bd_coords = np.radians(bd_geo[['latitude', 'longitude']].values)
+                # 500m radius
+                bd_geo['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(bd_coords)
+                
+                bd_clusters = bd_geo[bd_geo.cluster >= 0]
+                if not bd_clusters.empty:
+                    hot_bd = (bd_clusters.groupby('cluster')
+                              .agg(events=('id', 'size'), lat=('latitude', 'mean'), lon=('longitude', 'mean'))
+                              .reset_index())
+                    hot_bd = hot_bd.sort_values('events', ascending=False)
+                    
+                    top_cluster = hot_bd.iloc[0]
+                    pred_lat = top_cluster['lat']
+                    pred_lon = top_cluster['lon']
+                    pred_events_count = int(top_cluster['events'])
+                    
+            if pred_lat is None or pred_lon is None:
+                pred_lat = bd_df['latitude'].mean()
+                pred_lon = bd_df['longitude'].mean()
+                pred_events_count = len(bd_df)
+            
+            fig_crane = go.Figure()
+            
+            # 1. Plot previous breakdowns/accidents in orange
+            fig_crane.add_trace(go.Scattermapbox(
+                lat=bd_df['latitude'].tolist(),
+                lon=bd_df['longitude'].tolist(),
+                mode='markers',
+                marker=dict(size=8, color='#f97316', opacity=0.45),
+                text=[f"Cause: {r.event_cause}<br>Address: {r.get('address','?')}" for _, r in bd_df.iterrows()],
+                name="Breakdown/Accident Locations"
             ))
             
-        fig.update_layout(
-            mapbox_style="carto-positron", mapbox=dict(center=dict(lat=filtered_conflicts[0]['latitude'], lon=filtered_conflicts[0]['longitude']), zoom=12.0),
-            margin=dict(l=0, r=0, t=0, b=0), height=400, legend=dict(orientation="h", y=1.02)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.write("---")
-        st.markdown("### 🔀 Nearest-Hub Greedy Dispatch")
-        st.caption("Matches available manpower from real police stations to the active incidents in the conflict zone.")
-        
-        total_pool = st.number_input("Total Officers Pool at Stations", value=50, min_value=10, max_value=300, step=10)
-        
-        active_list = []
-        for zone in filtered_conflicts:
-            for ev in zone['details']:
-                active_list.append(ev)
-                
-        if active_list:
-            stations_dict = M.extract_station_coords(raw)
-            dispatch_results = M.nearest_hub_dispatch(active_list, stations_dict, total_pool)
-            
-            disp_df = pd.DataFrame(dispatch_results["dispatches"])
-            if not disp_df.empty:
-                st.write("#### Recommended Station Dispatch Plan")
-                disp_df.columns = ["Incident Cause", "Incident Address", "Dispatch Station", "Officers Sent", "Travel Distance (km)", "Est. ETA (min)"]
-                st.dataframe(disp_df.style.background_gradient(subset=["Est. ETA (min)"], cmap="Reds_r"), use_container_width=True)
-                
-                st.write("#### Remaining Officers at Station Hubs")
-                pool_df = pd.DataFrame(dispatch_results["stations_leftover"])
-                pool_df.columns = ["Police Station Hub", "Available Manpower Remaining"]
-                st.dataframe(pool_df, use_container_width=True)
-                
-                st.caption("*Disclaimer: Planning heuristic: 1 officer dispatched per 20 points of Event Impact Score (calibratable when roster data is integrated).*")
-            else:
-                st.info("All dispatch pools allocated.")
-        else:
-            st.info("No active incidents to dispatch officers to.")
-
-# =========================================================================== #
-#  4 · HOTSPOT INTELLIGENCE
-# =========================================================================== #
-elif PAGE == "Waterlogging / Chokepoints":
-    st.title("Waterlogging & Chokepoint Analyzer")
-    st.caption("🟡 PS2 event cause analyzer: Identifies unplanned road waterlogging events, historical hotspots, and clearance times.")
-    st.caption("Built on the historical dataset and ready to ingest a live BTP feed.")
-    
-    water_df = raw[raw.event_cause == "water_logging"].copy()
-    if len(water_df) == 0:
-        water_df = raw[raw.description.fillna('').str.lower().str.contains("water|rain|flood|monsoon|clog")].copy()
-        
-    st.subheader(f"Historical Waterlogging Incident Analytics ({len(water_df)} occurrences)")
-    
-    if len(water_df) > 0:
-        w1, w2, w3 = st.columns(3)
-        w1.metric("Average Clearance Time", f"{water_df.duration_min.mean():.1f} min")
-        w2.metric("Closure rate for waterlogging", f"{water_df.requires_road_closure.mean():.1%}")
-        w3.metric("Critical events", int((water_df.priority == "Critical").sum()))
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scattermapbox(
-            lat=water_df['latitude'].tolist(),
-            lon=water_df['longitude'].tolist(),
-            mode='markers',
-            marker=dict(size=8, color='blue', opacity=0.6),
-            text=[f"Location: {r.get('address','?')}<br>Duration: {r.get('duration_min',0):.1f} min" for _, r in water_df.iterrows()],
-            name="Waterlogging Incident"
-        ))
-        
-        GEO = water_df.dropna(subset=['latitude','longitude']).copy()
-        if len(GEO) > 10:
-            coords = np.radians(GEO[['latitude','longitude']].values)
-            GEO['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(coords)
-            hot = (GEO[GEO.cluster>=0].groupby('cluster')
-                   .agg(events=('id','size'), lat=('latitude','mean'), lon=('longitude','mean'))
-                   .reset_index())
-            
-            if not hot.empty:
-                fig.add_trace(go.Scattermapbox(
-                    lat=hot['lat'].tolist(),
-                    lon=hot['lon'].tolist(),
+            # 2. Plot DBSCAN Hotspots in crimson/red if available
+            if not hot_bd.empty:
+                fig_crane.add_trace(go.Scattermapbox(
+                    lat=hot_bd['lat'].tolist(),
+                    lon=hot_bd['lon'].tolist(),
                     mode='markers',
-                    marker=dict(size=18, color='darkred', symbol='circle'),
-                    text=[f"Waterlogging Hotspot Cluster {r.cluster+1}<br>Historical Events: {r.events}" for _, r in hot.iterrows()],
-                    name="⚠️ Waterlogging Hotspots"
+                    marker=dict(size=12, color='#b91c1c', opacity=0.8),
+                    text=[f"High-Risk Cluster Center ({int(row.events)} occurrences)" for _, row in hot_bd.iterrows()],
+                    name="🔥 High-Risk Accident Zones"
                 ))
-                
-        fig.update_layout(
-            mapbox_style="carto-positron",
-            mapbox=dict(center=dict(lat=12.9716, lon=77.5946), zoom=11.0),
-            margin=dict(l=0, r=0, t=0, b=0),
-            height=450
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.write("#### 🛡️ Pre-Monsoon Mitigation Checklist")
-        st.info(
-            "👉 **Pre-position Pumps**: Move water pumps and clearance crews near identified cluster centers.\n\n"
-            "👉 **Gully Cleansing**: Prioritize cleaning of drains on corridors with >2 waterlogging incidents annually.\n\n"
-            "👉 **Strategic Diversion Point Pre-Setup**: Pre-plot diversion advisory targets for monsoon shifts."
-        )
-    else:
-        st.info("No waterlogging incidents found in the current dataset.")
-
-elif PAGE == "Crane Pre-Positioning":
-    st.title("Crane & Tow Resource Deployment")
-    st.caption("🟡 PS2 specialized resource deployment: Predicts accident and vehicle breakdown event locations to pre-position tow recovery vehicles.")
-    st.caption("Built on the historical dataset and ready to ingest a live BTP feed.")
-    
-    bd_df = raw[raw.event_cause.isin(["accident", "vehicle_breakdown"])].copy()
-    if len(bd_df) == 0:
-        bd_df = raw[raw.description.fillna('').str.lower().str.contains("accident|breakdown|tow|crane")].copy()
-        
-    st.subheader(f"Accident & Breakdown Incident Hotspots ({len(bd_df)} occurrences)")
-    
-    if len(bd_df) > 0:
-        corr_risk = bd_df.groupby("corridor").agg(
-            events=("id", "size"),
-            avg_duration=("duration_min", "mean"),
-            closure_rate=("requires_road_closure", "mean")
-        ).reset_index().sort_values("events", ascending=False).head(10)
-        
-        st.write("#### 📍 Top Breakdown/Accident Impacted Corridors (Crane Pre-Positioning Targets)")
-        corr_risk.columns = ["Corridor Path", "Historical Incidents", "Avg Clearance (min)", "Road Closure Rate"]
-        st.dataframe(corr_risk.style.format({"Avg Clearance (min)": "{:.1f}", "Road Closure Rate": "{:.1%}"}), use_container_width=True)
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scattermapbox(
-            lat=bd_df['latitude'].tolist(),
-            lon=bd_df['longitude'].tolist(),
-            mode='markers',
-            marker=dict(size=7, color='orange', opacity=0.5),
-            text=[f"Cause: {r.event_cause}<br>Address: {r.get('address','?')}" for _, r in bd_df.iterrows()],
-            name="Breakdown/Accident"
-        ))
-        
-        stations_dict = M.extract_station_coords(raw)
-        st_lats = [s["lat"] for s in stations_dict.values()]
-        st_lons = [s["lon"] for s in stations_dict.values()]
-        st_names = [s["name"] for s in stations_dict.values()]
-        
-        fig.add_trace(go.Scattermapbox(
-            lat=st_lats, lon=st_lons,
-            mode='markers',
-            marker=dict(size=14, color='green', symbol='warehouse'),
-            text=[f"🏠 Police Station: {n}" for n in st_names],
-            name="🏠 Police Station Hubs (Crane Storage)"
-        ))
-        
-        fig.update_layout(
-            mapbox_style="carto-positron",
-            mapbox=dict(center=dict(lat=12.9716, lon=77.5946), zoom=11.0),
-            margin=dict(l=0, r=0, t=0, b=0),
-            height=450
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.write("#### 📋 Actionable Pre-Position Briefing Order")
-        highest_corr = corr_risk.iloc[0]["Corridor Path"]
-        highest_corr_events = bd_df[bd_df.corridor == highest_corr]
-        
-        if len(highest_corr_events) > 0:
-            c_lat = highest_corr_events.latitude.mean()
-            c_lon = highest_corr_events.longitude.mean()
-            nearest_station_name = min(stations_dict.keys(), key=lambda s: np.sqrt((stations_dict[s]["lat"] - c_lat)**2 + (stations_dict[s]["lon"] - c_lon)**2))
-        else:
-            nearest_station_name = "Sadashivanagar"
             
-        st.info(
-            f"📍 **Pre-Position Recovery Crane**: Station **{nearest_station_name}** to dispatch 1 recovery vehicle to "
-            f"**{highest_corr}** during peak rush hours to minimize blocking delays.\n\n"
-            f"👉 **Rationale**: {highest_corr} exhibits the highest incident volume ({int(corr_risk.iloc[0]['Historical Incidents'])} historical occurrences) "
-            f"with average clearance duration of {corr_risk.iloc[0]['Avg Clearance (min)']:.1f} minutes."
-        )
-    else:
-        st.info("No accident/breakdown incidents found.")
+            # 3. Plot Police Station Hubs (Green markers)
+            stations_dict = M.extract_station_coords(raw)
+            st_lats = [s["lat"] for s in stations_dict.values()]
+            st_lons = [s["lon"] for s in stations_dict.values()]
+            st_names = [s["name"] for s in stations_dict.values()]
+            
+            fig_crane.add_trace(go.Scattermapbox(
+                lat=st_lats, lon=st_lons,
+                mode='markers',
+                marker=dict(size=12, color='#22c55e'),
+                text=[f"🏠 Police Station: {n}" for n in st_names],
+                name="🏠 Police Station Hubs"
+            ))
+            
+            # 4. Highlight the Recommended Crane Spot
+            fig_crane.add_trace(go.Scattermapbox(
+                lat=[pred_lat],
+                lon=[pred_lon],
+                mode='markers',
+                marker=dict(size=18, color='#ef4444'),
+                text=[f"⭐ RECOMMENDED CRANE PRE-POSITION SPOT<br>Highest historical accident density: {pred_events_count} occurrences"],
+                name="⭐ Recommended Crane Spot"
+            ))
+            
+            fig_crane.update_layout(
+                mapbox_style="carto-positron",
+                mapbox=dict(center=dict(lat=pred_lat, lon=pred_lon), zoom=12.0),
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=500,
+                legend=dict(orientation="h", y=1.02)
+            )
+            st.plotly_chart(fig_crane, use_container_width=True)
+            
+            # Actionable Pre-Position Briefing Order HTML Card
+            highest_corr = corr_risk.iloc[0]["Corridor Path"]
+            highest_corr_events = bd_df[bd_df.corridor == highest_corr]
+            
+            if len(highest_corr_events) > 0:
+                c_lat = highest_corr_events.latitude.mean()
+                c_lon = highest_corr_events.longitude.mean()
+                nearest_station_name = min(stations_dict.keys(), key=lambda s: np.sqrt((stations_dict[s]["lat"] - c_lat)**2 + (stations_dict[s]["lon"] - c_lon)**2))
+            else:
+                nearest_station_name = "Sadashivanagar"
+                
+            st.write("#### 📋 Actionable Pre-Position Briefing Order")
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 24px; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); color: #f8fafc; font-family: 'Outfit', sans-serif;">
+              <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                <div style="background: #ea580c; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin-right: 12px; font-weight: bold; font-size: 18px;">🏗️</div>
+                <div>
+                  <h4 style="margin: 0; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #ea580c;">Actionable Deployment Briefing</h4>
+                  <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: #f1f5f9; text-transform: uppercase;">Recovery Crane Pre-Positioning Directive</h3>
+                </div>
+              </div>
+              
+              <div style="background: rgba(234, 88, 12, 0.1); border-left: 4px solid #ea580c; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;">
+                <strong style="color: #ffedd5; font-size: 14px; display: block; margin-bottom: 4px;">📍 Deployment Directive</strong>
+                <span style="font-size: 13px; line-height: 1.5; color: #ffedd5;">
+                  Dispatch <strong>1 heavy-recovery crane</strong> from <strong>{nearest_station_name}</strong> to pre-position at the identified high-risk corridor: <strong>{highest_corr}</strong>.
+                </span>
+              </div>
+              
+              <div style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 6px; border: 1px solid #334155;">
+                <strong style="color: #cbd5e1; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">💡 Risk Analytics Rationale</strong>
+                <span style="font-size: 12px; line-height: 1.4; color: #94a3b8; display: block;">
+                  • Corridor: <strong>{highest_corr}</strong><br>
+                  • Incident Volume: <strong>{int(corr_risk.iloc[0]['Historical Incidents'])}</strong> historical occurrences<br>
+                  • Avg Clearance Duration: <strong>{corr_risk.iloc[0]['Avg Clearance (min)']:.1f} minutes</strong>
+                </span>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Provide copyable text area below
+            sop_copy_text = f"DEPLOYMENT ORDER: Dispatch 1 heavy-recovery crane from {nearest_station_name} to pre-position at {highest_corr} for peak traffic periods. Historical incidents: {int(corr_risk.iloc[0]['Historical Incidents'])}. Avg clearance: {corr_risk.iloc[0]['Avg Clearance (min)']:.1f} min."
+            st.text_area("Copyable Briefing Order Text", sop_copy_text, height=80)
+        else:
+            st.info("No accident/breakdown incidents found.")
 
 elif PAGE == "Upstream Risk Buffer":
     st.title("Upstream Risk Buffer Analyzer")
     st.caption("🔴 PS2: Predicts spatiotemporal upstream risk radius and queries historical near-miss incidents to pre-emptively intercept traffic flow.")
     st.caption("Built on the historical dataset and ready to ingest a live BTP feed.")
     
+    def get_circle_points(lat, lon, radius_km, num_points=100):
+        r_earth = 6371.0
+        lat_rad = np.radians(lat)
+        lon_rad = np.radians(lon)
+        d_div_r = radius_km / r_earth
+        
+        circle_lats = []
+        circle_lons = []
+        
+        for angle in np.linspace(0, 2 * np.pi, num_points):
+            point_lat = np.arcsin(np.sin(lat_rad) * np.cos(d_div_r) + 
+                                  np.cos(lat_rad) * np.sin(d_div_r) * np.cos(angle))
+            point_lon = lon_rad + np.arctan2(np.sin(angle) * np.sin(d_div_r) * np.cos(lat_rad),
+                                             np.cos(d_div_r) - np.sin(lat_rad) * np.sin(point_lat))
+            circle_lats.append(np.degrees(point_lat))
+            circle_lons.append(np.degrees(point_lon))
+            
+        return circle_lats, circle_lons
+
     st.markdown("### Spatial Buffer Analysis")
     c1, c2, c3 = st.columns(3)
     c_lat = c1.number_input("Incident Latitude", value=12.9716, format="%.5f")
@@ -1137,6 +1291,7 @@ elif PAGE == "Upstream Risk Buffer":
         
         fig = go.Figure()
         
+        # 1. Active Incident
         fig.add_trace(go.Scattermapbox(
             lat=[c_lat], lon=[c_lon],
             mode="markers",
@@ -1145,6 +1300,7 @@ elif PAGE == "Upstream Risk Buffer":
             name="Current Incident"
         ))
         
+        # 2. Historical Near-Misses
         inc = res["incidents"]
         if inc:
             fig.add_trace(go.Scattermapbox(
@@ -1156,6 +1312,42 @@ elif PAGE == "Upstream Risk Buffer":
                 name="Historical Near-Misses"
             ))
             
+        # 3. Add circular buffer boundary
+        circ_lats, circ_lons = get_circle_points(c_lat, c_lon, max_dist)
+        fig.add_trace(go.Scattermapbox(
+            lat=circ_lats,
+            lon=circ_lons,
+            mode="lines",
+            line=dict(width=3, color="#ef4444"),
+            fill="toself",
+            fillcolor="rgba(239, 68, 68, 0.12)",
+            name=f"🚨 Intercept Boundary ({max_dist} km)"
+        ))
+        
+        # 4. Add warning check points at the intercept boundaries
+        warning_lats = [c_lat + (max_dist/111.0), c_lat - (max_dist/111.0), c_lat, c_lat]
+        warning_lons = [
+            c_lon, 
+            c_lon, 
+            c_lon + (max_dist / (111.0 * np.cos(np.radians(c_lat)))), 
+            c_lon - (max_dist / (111.0 * np.cos(np.radians(c_lat))))
+        ]
+        warning_names = [
+            "North Intercept Point (Advisory Board)", 
+            "South Intercept Point (Advisory Board)", 
+            "East Intercept Point (Diversion Sign)", 
+            "West Intercept Point (Diversion Sign)"
+        ]
+        
+        fig.add_trace(go.Scattermapbox(
+            lat=warning_lats,
+            lon=warning_lons,
+            mode="markers",
+            marker=dict(size=12, color="#3b82f6"),
+            text=warning_names,
+            name="🔵 Upstream Intercept Points"
+        ))
+            
         fig.update_layout(
             mapbox_style="carto-positron",
             mapbox=dict(center=dict(lat=c_lat, lon=c_lon), zoom=13.0),
@@ -1163,6 +1355,33 @@ elif PAGE == "Upstream Risk Buffer":
             height=450
         )
         st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 20px; border-radius: 12px; border: 1px solid #334155; color: #f8fafc; font-family: 'Outfit', sans-serif; margin-top: 15px; margin-bottom: 25px;">
+          <h4 style="margin: 0 0 10px 0; color: #ef4444; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">🛡️ Spatiotemporal Upstream Risk Explanation</h4>
+          <p style="margin: 0 0 12px 0; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
+            Traffic congestion acts like a fluid wave, propagating backwards (upstream) from the core incident location. By setting up an intercept radius, we establish a proactive boundary.
+          </p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 12px;">
+            <div style="background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 6px; border: 1px solid #475569;">
+              <strong style="color: #60a5fa; display: block; margin-bottom: 4px;">🔴 Core Impact Zone</strong>
+              The red marker represents the active incident point. Gridlock begins here and spreads outwards at a rate determined by local bottleneck density.
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 6px; border: 1px solid #475569;">
+              <strong style="color: #60a5fa; display: block; margin-bottom: 4px;">⭕ Intercept Boundary ({max_dist} km)</strong>
+              The red shaded circle shows the preemptive warning area. Drivers inside or entering this zone must be alerted before they reach the core gridlock.
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 6px; border: 1px solid #475569;">
+              <strong style="color: #60a5fa; display: block; margin-bottom: 4px;">🔵 Advisory Points</strong>
+              The blue dots represent strategic intercept coordinates at the buffer boundary where digital message signs and officers redirect flow.
+            </div>
+            <div style="background: rgba(30, 41, 59, 0.5); padding: 10px; border-radius: 6px; border: 1px solid #475569;">
+              <strong style="color: #60a5fa; display: block; margin-bottom: 4px;">🔸 Near-Miss History</strong>
+              Orange dots indicate past incidents in this buffer. High density signals a corridor prone to secondary accidents when backups occur.
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.write("#### Recommended Upstream Intercept Actions")
         st.dataframe(pd.DataFrame([
