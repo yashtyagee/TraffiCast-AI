@@ -18,6 +18,7 @@ import networkx as nx
 
 import model as M
 import mappls
+from sklearn.cluster import DBSCAN
 
 # Folium Leaflet Map imports for premium styling
 try:
