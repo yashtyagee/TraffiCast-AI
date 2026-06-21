@@ -19,5 +19,6 @@ COPY . .
 # Hugging Face Spaces requires exposing port 7860
 EXPOSE 7860
 
-# Use startup wrapper that opens port 7860 immediately for health checks
-CMD ["python", "start.py"]
+# Run Streamlit directly — startup_duration_timeout in README.md gives HF
+# enough time (10 min) for the ~50s cold start to complete
+CMD ["streamlit", "run", "app.py"]
