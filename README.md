@@ -5,7 +5,7 @@ colorFrom: blue
 colorTo: gray
 sdk: docker
 app_port: 7860
-startup_duration_timeout: 600
+startup_duration_timeout: 10m
 pinned: false
 ---
 
