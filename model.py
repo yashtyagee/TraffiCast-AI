@@ -319,7 +319,12 @@ def load_or_train(csv_path: str, artifacts_dir: str, force: bool = False) -> dic
         print(f"DEBUG: Found model bundle at {path} with size {os.path.getsize(path)} bytes")
     if (not force) and os.path.exists(path):
         try:
-            return joblib.load(path)
+            bundle = joblib.load(path)
+            # Check if all required keys for the new dashboard features are present
+            required_keys = ['bandobast_load', 'zone_dow', 'hotspots', 'closure', 'longblock', 'severity', 'duration']
+            if all(k in bundle for k in required_keys):
+                return bundle
+            print("WARNING: Loaded model bundle is outdated (missing new keys). Retraining...")
         except Exception as e:
             print(f"WARNING: Failed to load pre-trained bundle from {path}: {e}")
             import traceback
