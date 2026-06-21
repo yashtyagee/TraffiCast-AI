@@ -280,11 +280,15 @@ def save_bundle(bundle: dict, artifacts_dir: str):
 def load_or_train(csv_path: str, artifacts_dir: str, force: bool = False) -> dict:
     import joblib
     path = os.path.join(artifacts_dir, 'trafficast_bundle.joblib')
+    if os.path.exists(path):
+        print(f"DEBUG: Found model bundle at {path} with size {os.path.getsize(path)} bytes")
     if (not force) and os.path.exists(path):
         try:
             return joblib.load(path)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"WARNING: Failed to load pre-trained bundle from {path}: {e}")
+            import traceback
+            traceback.print_exc()
     df = load_raw(csv_path)
     bundle = train_all(df)
     try:
