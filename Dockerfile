@@ -14,5 +14,5 @@ COPY . .
 # Hugging Face Spaces requires exposing port 7860
 EXPOSE 7860
 
-# Command to run Streamlit in headless mode to prevent email prompts and telemetry collection hangs
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false"]
+# Command to run Streamlit in headless mode with CORS & XSRF disabled to allow connection behind Hugging Face proxy
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
