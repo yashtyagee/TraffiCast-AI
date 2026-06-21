@@ -19,5 +19,5 @@ COPY . .
 # Hugging Face Spaces requires exposing port 7860
 EXPOSE 7860
 
-# Command to run Streamlit, configuration is handled via .streamlit/config.toml
-CMD ["streamlit", "run", "app.py"]
+# Use startup wrapper that opens port 7860 immediately for health checks
+CMD ["python", "start.py"]
