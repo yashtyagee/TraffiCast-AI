@@ -14,7 +14,7 @@ venv/
 env/
 
 # Exclude heavy trained model bundle (it auto-generates on first run)
-artifacts/trafficast_bundle.joblib
+# artifacts/trafficast_bundle.joblib
 
 # OS-specific files
 .DS_Store
