@@ -51,6 +51,10 @@ def get_data():
 def get_scored(_bundle_ver):
     return M.predict_batch(get_bundle(), get_data())
 
+@st.cache_data(show_spinner="Analyzing spatiotemporal features…")
+def get_raw_fe():
+    return M.fe(get_data())
+
 try:
     bundle = get_bundle()
     raw = get_data()
@@ -384,7 +388,7 @@ if PAGE == "Command Center":
                         icon=folium.Icon(color=icon_color, icon="info-sign")
                     ).add_to(marker_cluster)
                 
-                st_folium(m, height=560, use_container_width=True, key="cc_folium")
+                st_folium(m, height=560, use_container_width=True, key="cc_folium", returned_objects=[])
             else:
                 fig = px.scatter_mapbox(
                     view.sample(min(len(view), 2500), random_state=1),
@@ -1101,7 +1105,7 @@ elif PAGE == "Hotspot Intelligence":
                     popup=f"Congestion Influence Zone ({int(r.events * 10 + 200)}m)"
                 ).add_to(m)
                 
-            st_folium(m, height=560, use_container_width=True, key="hotspot_folium")
+            st_folium(m, height=560, use_container_width=True, key="hotspot_folium", returned_objects=[])
         else:
             fig = go.Figure()
             fig.add_trace(go.Scattermapbox(
@@ -1193,7 +1197,7 @@ elif PAGE == "Hotspot Intelligence":
         st.caption("Hour-by-hour relative risk forecast calculated from historical load profiles.")
         
         # Aggregate relative risk profile by zone and hour
-        risk_agg = (M.fe(raw).groupby(["zone", "hour"])
+        risk_agg = (get_raw_fe().groupby(["zone", "hour"])
                    .size().rename("incidents").reset_index())
         
         # Normalize to 0-100 relative index
@@ -1249,7 +1253,7 @@ elif PAGE == "Astram Query Center":
             st.plotly_chart(fig, use_container_width=True)
             ans = f"**{t.index[0]}** shows the highest average incident impact ({t.iloc[0]:.1f}/100)."
         elif "contagious" in ql or "spread" in ql or "hour" in ql:
-            t = M.fe(raw).groupby("hour")["requires_road_closure"].mean()
+            t = get_raw_fe().groupby("hour")["requires_road_closure"].mean()
             fig = px.line(t, title="Incident Closure Risk Profile by Hour of Day", labels={"value": "Closure Likelihood"})
             fig.update_layout(mapbox_style="carto-positron")
             st.plotly_chart(fig, use_container_width=True)
