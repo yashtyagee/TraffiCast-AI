@@ -183,6 +183,9 @@ def _build_X(frame, y_for_te, tr_idx, prior, encoders=None, fit=True):
 # ----------------------------------------------------------------------------
 def train_all(df: pd.DataFrame) -> dict:
     R = fe(df)
+    # Sort R chronologically for temporal split
+    R = R.sort_values('start').reset_index(drop=True)
+    
     bundle = {'backend': BACKEND, 'trained_at': datetime.datetime.utcnow().isoformat(),
               'NUM': NUM, 'TE': TE_COLS, 'n_events': len(R)}
 
@@ -212,9 +215,37 @@ def train_all(df: pd.DataFrame) -> dict:
     ts['d'] = pd.to_datetime(ts['d']); ts['dow'] = ts['d'].dt.dayofweek
     bundle['zone_dow'] = ts.groupby(['zone','dow'])['events'].mean().rename('expected').reset_index()
 
+    # ---- Bandobast Shift Load Profile (zone x dow x shift) ----
+    def get_shift(h):
+        if 7 <= h < 12:
+            return 'Morning'
+        elif 12 <= h < 17:
+            return 'Afternoon'
+        elif 17 <= h < 22:
+            return 'Evening'
+        else:
+            return 'Night'
+            
+    df_band = R.dropna(subset=['zone', 'dow', 'hour']).copy()
+    df_band['shift'] = df_band['hour'].apply(get_shift)
+    band_stats = (df_band.groupby(['zone', 'dow', 'shift'])
+                  .agg(events=('id', 'size'),
+                       closure_rate=('requires_road_closure', 'mean'))
+                  .reset_index())
+    band_stats['load_score'] = band_stats['events'] * (1.0 + band_stats['closure_rate'])
+    bundle['bandobast_load'] = band_stats
+
     # ---- Model 1: closure ----
     y = R['requires_road_closure'].astype(int).values
-    tr, te = train_test_split(np.arange(len(R)), test_size=.2, random_state=42, stratify=y)
+    n_samples = len(R)
+    split_idx = int(n_samples * 0.8)
+    tr = np.arange(split_idx)
+    te = np.arange(split_idx, n_samples)
+    
+    # Save the temporal split cutoff date
+    split_date = R.iloc[split_idx]['start']
+    bundle['temporal_split_date'] = split_date.strftime('%Y-%m-%d %H:%M:%S')
+    
     prior = y[tr].mean()
     X, ENC = _build_X(R, y, tr, prior, fit=True)
     C = np.radians(R[['lat','lon']].fillna(0).values)
@@ -236,9 +267,13 @@ def train_all(df: pd.DataFrame) -> dict:
 
     # ---- Models 2 & 3: long-blocker + severity (valid durations) ----
     m = (R['duration_min'] > 1) & (R['duration_min'] < 60*24*2)
-    Rd = R[m].copy()
+    Rd = R[m].copy().reset_index(drop=True)
     ylong = (Rd['duration_min'] > 180).astype(int).values
-    trd, ted = train_test_split(np.arange(len(Rd)), test_size=.2, random_state=42, stratify=ylong)
+    n_samples_d = len(Rd)
+    split_idx_d = int(n_samples_d * 0.8)
+    trd = np.arange(split_idx_d)
+    ted = np.arange(split_idx_d, n_samples_d)
+    
     prd = ylong[trd].mean()
     Xd, ENCd = _build_X(Rd, ylong, trd, prd, fit=True)
     Xd['requires_closure'] = Rd['requires_road_closure'].astype(int).values
@@ -492,8 +527,8 @@ def retrain_with_feedback(csv_path: str, feedback_path: str, artifacts_dir: str)
                     new_row = {
                         'id': f"FB_{start_dt.strftime('%Y%m%d%H%M%S')}",
                         'event_type': 'unplanned',
-                        'latitude': 12.9716,
-                        'longitude': 77.5946,
+                        'latitude': float(row.get('latitude', 12.9716)),
+                        'longitude': float(row.get('longitude', 77.5946)),
                         'event_cause': row.get('cause', 'others'),
                         'requires_road_closure': row.get('actual_closure'),
                         'start_datetime': start_dt.isoformat(),
@@ -501,9 +536,9 @@ def retrain_with_feedback(csv_path: str, feedback_path: str, artifacts_dir: str)
                         'status': 'closed',
                         'priority': 'High',
                         'description': f"Feedback Log - Cause: {row.get('cause')}",
-                        'address': 'Bengaluru Feedback Log',
-                        'zone': 'unknown',
-                        'corridor': 'Non-corridor'
+                        'address': row.get('address', 'Bengaluru Feedback Log'),
+                        'zone': row.get('zone', 'unknown'),
+                        'corridor': row.get('corridor', 'Non-corridor')
                     }
                     new_rows.append(new_row)
                 
@@ -530,65 +565,111 @@ def retrain_with_feedback(csv_path: str, feedback_path: str, artifacts_dir: str)
 #  ADVANCED HACKATHON WINNING ENGINES (Contagion, Dispatch, Counterfactuals)
 # ============================================================================ #
 
-def compute_contagion_ripple(lat: float, lon: float, hour: int, dow: int) -> dict:
+def query_upstream_risk_buffer(lat: float, lon: float, raw_df: pd.DataFrame, max_dist_km: float = 3.0) -> dict:
     """
-    Spatiotemporal Hawkes process contagion model.
-    Calculates R0 (infectiousness) and contagion intensity ripple ring coordinates.
-    No external training data - uses base statistics.
+    Spatiotemporal Upstream Risk Buffer analyzer.
+    Calculates historical event frequency and near-miss hotspots within a given radius.
     """
-    rush_factor = 1.5 if (8 <= hour <= 10 or 17 <= hour <= 20) else 0.8
-    dow_factor = 1.2 if dow < 5 else 0.9
+    df = raw_df.copy()
+    df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+    df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+    df = df.dropna(subset=['latitude', 'longitude'])
     
-    r0 = round(0.85 * rush_factor * dow_factor, 2)
-    risk_level = "CRITICAL" if r0 > 1.2 else "HIGH" if r0 > 1.0 else "MODERATE" if r0 > 0.6 else "LOW"
+    # Calculate distance to selected point
+    df['distance_km'] = np.sqrt((df['latitude'] - lat)**2 + (df['longitude'] - lon)**2) * 111.0
+    nearby = df[df['distance_km'] <= max_dist_km].copy()
     
-    # Generate 8 radial points representing the contagion wavefront
-    d0 = 1.5
-    angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
-    ripple_points = []
+    near_miss_count = len(nearby)
+    high_impact_count = len(nearby[nearby['priority'].isin(['High', 'Critical'])]) if len(nearby) > 0 else 0
     
-    # We generate three rings: 0.5km, 1.2km, 2.0km
-    for radius in [0.5, 1.2, 2.0]:
-        intensity = float(r0 * np.exp(-radius / d0))
-        deg_dist = radius / 111.0
-        for angle in angles:
-            p_lat = lat + deg_dist * np.sin(angle)
-            p_lon = lon + deg_dist * np.cos(angle) / np.cos(np.radians(lat))
-            ripple_points.append({
-                "latitude": float(p_lat),
-                "longitude": float(p_lon),
-                "radius_km": radius,
-                "intensity": round(intensity, 3),
-                "risk": "HIGH" if intensity > 0.6 else "MODERATE" if intensity > 0.3 else "LOW"
+    # Get top causes in this radius
+    top_causes = nearby['event_cause'].value_counts().head(5).to_dict() if len(nearby) > 0 else {}
+    
+    # Get average clearance duration and road closure rate in this buffer zone
+    avg_duration = float(nearby['duration_min'].mean()) if len(nearby) > 0 else 0.0
+    avg_closure_rate = float(nearby['requires_road_closure'].mean()) if len(nearby) > 0 else 0.0
+    
+    incidents = []
+    if len(nearby) > 0:
+        sample_nearby = nearby.sample(min(len(nearby), 30), random_state=42)
+        for _, r in sample_nearby.iterrows():
+            incidents.append({
+                "latitude": float(r["latitude"]),
+                "longitude": float(r["longitude"]),
+                "cause": r["event_cause"],
+                "distance_km": round(float(r["distance_km"]), 2),
+                "duration_min": round(float(r.get("duration_min", 0.0)), 1),
+                "priority": r.get("priority", "Low")
             })
             
+    # Calculate a risk factor based on local density and severity
+    buffer_area = np.pi * max_dist_km**2
+    local_density = near_miss_count / buffer_area
+    risk_factor = round(local_density / 5.0, 2)
+    risk_level = "CRITICAL" if risk_factor > 2.0 else "HIGH" if risk_factor > 1.0 else "MODERATE" if risk_factor > 0.5 else "LOW"
+    
     return {
-        "r0": r0,
+        "risk_factor": risk_factor,
         "risk_level": risk_level,
-        "ripple_points": ripple_points,
-        "decay_constant": d0,
-        "description": f"Gridlock reproduction rate R0 is {r0}. " + (
-            "Each incident is highly likely to trigger secondary bottlenecks. Preemptive upstream quarantine recommended."
-            if r0 > 1.0 else "Congestion is expected to remain localized."
+        "near_miss_count": near_miss_count,
+        "high_impact_count": high_impact_count,
+        "avg_duration": round(avg_duration, 1),
+        "avg_closure_rate": round(avg_closure_rate, 3),
+        "top_causes": top_causes,
+        "incidents": incidents,
+        "description": f"Found {near_miss_count} historical incidents within a {max_dist_km}km buffer zone. " + (
+            "This area has high historical density of traffic events. Preemptive upstream intercepts are recommended."
+            if risk_factor > 1.0 else "Incident density in this area is relatively low."
         )
     }
 
-def dispatch_optimizer(active_events: list[dict], total_officers: int = 50) -> dict:
+def extract_station_coords(df: pd.DataFrame) -> dict:
     """
-    Min-Cost Max-Flow resource dispatcher. Matches officers from 5 historical
-    Bengaluru police stations to active events, minimizing travel cost/latency.
+    Computes real police station coordinates dynamically by taking the mean lat/lon
+    of historical events for each station name. Also calculates historical workload share.
     """
-    stations = [
-        {"name": "MG Road Station", "lat": 12.9740, "lon": 77.6010, "pool": int(total_officers * 0.25)},
-        {"name": "Koramangala Station", "lat": 12.9340, "lon": 77.6200, "pool": int(total_officers * 0.20)},
-        {"name": "Indiranagar Station", "lat": 12.9780, "lon": 77.6410, "pool": int(total_officers * 0.20)},
-        {"name": "Hebbal Station", "lat": 13.0360, "lon": 77.5980, "pool": int(total_officers * 0.15)},
-        {"name": "Whitefield Station", "lat": 12.9690, "lon": 77.7500, "pool": int(total_officers * 0.20)}
-    ]
+    df = df.copy()
+    df['latitude'] = pd.to_numeric(df['latitude'], errors='coerce')
+    df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
+    df = df.dropna(subset=['latitude', 'longitude', 'police_station'])
+    df = df[df['police_station'] != 'unknown']
     
-    sum_pool = sum(s["pool"] for s in stations)
-    if sum_pool < total_officers:
-        stations[0]["pool"] += (total_officers - sum_pool)
+    counts = df['police_station'].value_counts()
+    total_events = counts.sum()
+    
+    grouped = df.groupby('police_station')[['latitude', 'longitude']].mean()
+    
+    stations = {}
+    for name, row in grouped.iterrows():
+        freq = float(counts.get(name, 0)) / total_events if total_events > 0 else 0
+        stations[name] = {
+            "name": name,
+            "lat": float(row['latitude']),
+            "lon": float(row['longitude']),
+            "historical_share": freq
+        }
+    return stations
+
+def nearest_hub_dispatch(active_events: list[dict], stations_dict: dict, total_officers: int = 50) -> dict:
+    """
+    Greedy dispatch optimizer. Matches officers from actual Bengaluru police stations
+    to active events, minimizing travel cost/latency.
+    Officer pools are distributed proportionally to historical station share.
+    """
+    stations = []
+    for name, info in stations_dict.items():
+        pool = int(np.round(total_officers * info["historical_share"]))
+        stations.append({
+            "name": name,
+            "lat": info["lat"],
+            "lon": info["lon"],
+            "pool": pool
+        })
+        
+    allocated = sum(s["pool"] for s in stations)
+    if allocated != total_officers and len(stations) > 0:
+        stations_sorted_pool = sorted(stations, key=lambda x: x["pool"], reverse=True)
+        stations_sorted_pool[0]["pool"] += (total_officers - allocated)
         
     dispatches = []
     unmet_events = []
@@ -596,7 +677,8 @@ def dispatch_optimizer(active_events: list[dict], total_officers: int = 50) -> d
     sorted_events = sorted(active_events, key=lambda x: x.get("impact_score", 0), reverse=True)
     
     for ev in sorted_events:
-        needed = max(1, int(np.ceil(ev.get("impact_score", 20) / 20)))
+        score = ev.get("impact_score", 20)
+        needed = max(1, int(np.ceil(score / 20)))
         assigned = 0
         ev_lat = float(ev.get("latitude", CLAT))
         ev_lon = float(ev.get("longitude", CLON))
@@ -604,7 +686,7 @@ def dispatch_optimizer(active_events: list[dict], total_officers: int = 50) -> d
         def dist_to_ev(stn):
             return np.sqrt((stn["lat"] - ev_lat)**2 + (stn["lon"] - ev_lon)**2) * 111.0
             
-        sorted_stations = sorted(stations, key=dist_to_ev)
+        sorted_stations = sorted([s for s in stations if s["pool"] > 0], key=dist_to_ev)
         
         for stn in sorted_stations:
             if needed <= 0:
@@ -635,8 +717,89 @@ def dispatch_optimizer(active_events: list[dict], total_officers: int = 50) -> d
     return {
         "dispatches": dispatches,
         "unmet_events": unmet_events,
-        "stations_leftover": [{"name": s["name"], "pool_remaining": s["pool"]} for s in stations]
+        "stations_leftover": [{"name": s["name"], "pool_remaining": s["pool"]} for s in stations if s["pool"] > 0]
     }
+
+def allocate_bandobast(bundle: dict, dow: int, shift_name: str, total_officers: int = 40) -> list[dict]:
+    """
+    Distributes available officer pool proportionally across Bengaluru zones based on
+    historical load profile for the given weekday (dow) and shift.
+    """
+    load_df = bundle.get('bandobast_load', None)
+    if load_df is None:
+        return []
+        
+    sub = load_df[(load_df['dow'] == dow) & (load_df['shift'] == shift_name)].copy()
+    if len(sub) == 0:
+        return []
+        
+    total_load = sub['load_score'].sum()
+    if total_load == 0:
+        sub['officers'] = int(np.floor(total_officers / len(sub)))
+    else:
+        sub['officers'] = (sub['load_score'] / total_load * total_officers).round().astype(int)
+        
+    allocated = sub['officers'].sum()
+    if allocated != total_officers and len(sub) > 0:
+        sub_sorted = sub.sort_values('officers', ascending=False)
+        idx_to_adjust = sub_sorted.index[0]
+        sub.at[idx_to_adjust, 'officers'] = max(0, sub.at[idx_to_adjust, 'officers'] + (total_officers - allocated))
+        
+    return sub.sort_values('officers', ascending=False).to_dict('records')
+
+def get_playbook_data(cause: str, df: pd.DataFrame) -> dict:
+    """
+    Computes real stats from the dataset for a specific event cause.
+    Forecasts impact + manpower + barricading + diversion, all per event cause.
+    """
+    sub = df[df['event_cause'] == cause].copy()
+    if len(sub) == 0:
+        return {}
+        
+    durations = sub['duration_min'].dropna().values
+    if len(durations) > 0:
+        p50 = float(np.percentile(durations, 50))
+        p90 = float(np.percentile(durations, 90))
+    else:
+        p50 = 45.0
+        p90 = 120.0
+        
+    closure_rate = float(sub['requires_road_closure'].mean())
+    top_corridors = sub['corridor'].value_counts().head(5).index.tolist()
+    
+    rec_officers = int(np.ceil(p50 / 25.0 + closure_rate * 4.0))
+    rec_barricades = int(np.ceil(closure_rate * 12)) if closure_rate > 0.1 else 0
+    
+    desc = sub['description'].fillna('').astype(str).str.lower()
+    crane_rate = float(desc.str.contains('crane|tow|breakdown').mean())
+    
+    return {
+        "cause": cause,
+        "count": len(sub),
+        "p50_duration": round(p50, 1),
+        "p90_duration": round(p90, 1),
+        "closure_rate": round(closure_rate, 3),
+        "top_corridors": top_corridors,
+        "recommended_officers": rec_officers,
+        "recommended_barricades": rec_barricades,
+        "crane_rate": round(crane_rate, 3)
+    }
+
+def compute_contagion_ripple(lat: float, lon: float, hour: int, dow: int) -> dict:
+    """
+    Deprecated: Backward compatibility wrapper for old code.
+    """
+    rush_factor = 1.5 if (8 <= hour <= 10 or 17 <= hour <= 20) else 0.8
+    dow_factor = 1.2 if dow < 5 else 0.9
+    r0 = round(0.85 * rush_factor * dow_factor, 2)
+    risk_level = "CRITICAL" if r0 > 1.2 else "HIGH" if r0 > 1.0 else "MODERATE" if r0 > 0.6 else "LOW"
+    return {"r0": r0, "risk_level": risk_level, "ripple_points": [], "decay_constant": 1.5, "description": ""}
+
+def dispatch_optimizer(active_events: list[dict], total_officers: int = 50) -> dict:
+    """
+    Deprecated: Backward compatibility wrapper for old code.
+    """
+    return {"dispatches": [], "unmet_events": [], "stations_leftover": []}
 
 def get_counterfactuals(ev: dict, bundle: dict) -> dict:
     """
@@ -684,7 +847,7 @@ def get_counterfactuals(ev: dict, bundle: dict) -> dict:
                 "impact": "CRITICAL" if dur_div_diff > 30 else "HIGH"
             },
             {
-                "action": "Rapid Response Intervention (<10m)",
+                "action": "Rapid Response Planning Heuristic Target (<10m)",
                 "predicted_duration_min": round(dur_fast, 1),
                 "duration_reduction_min": round(base_dur - dur_fast, 1),
                 "closure_probability": round(close_fast, 3),
