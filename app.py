@@ -822,25 +822,57 @@ elif PAGE == "Public Diversion Advisory":
     dest_coord = (blocked_coord[0] + 0.015, blocked_coord[1] + 0.015)
     origin_coord = (blocked_coord[0] - 0.015, blocked_coord[1] - 0.015)
     
+    # Calculate offset waypoints to force detours around the incident spot
+    waypoint_1 = (blocked_coord[0] + 0.010, blocked_coord[1] - 0.010)
+    waypoint_2 = (blocked_coord[0] - 0.010, blocked_coord[1] + 0.010)
+    
     if not mappls.has_key():
         st.warning("Running in fallback mode (straight-line preview). Set MAPPLS_REST_KEY in secrets to get live road routing.")
         
-    routes = mappls.directions(origin_coord, dest_coord, alternatives=2)
+    routes = []
+    # Query directions for Bypass Route 1 (via Waypoint 1)
+    r1_a = mappls.directions(origin_coord, waypoint_1)
+    r1_b = mappls.directions(waypoint_1, dest_coord)
+    if r1_a and r1_b:
+        routes.append({
+            "coords": r1_a[0]["coords"] + r1_b[0]["coords"],
+            "distance_km": r1_a[0]["distance_km"] + r1_b[0]["distance_km"],
+            "duration_min": r1_a[0]["duration_min"] + r1_b[0]["duration_min"]
+        })
+        
+    # Query directions for Bypass Route 2 (via Waypoint 2)
+    r2_a = mappls.directions(origin_coord, waypoint_2)
+    r2_b = mappls.directions(waypoint_2, dest_coord)
+    if r2_a and r2_b:
+        routes.append({
+            "coords": r2_a[0]["coords"] + r2_b[0]["coords"],
+            "distance_km": r2_a[0]["distance_km"] + r2_b[0]["distance_km"],
+            "duration_min": r2_a[0]["duration_min"] + r2_b[0]["duration_min"]
+        })
+        
     fig = go.Figure()
     
     if routes:
         best_i = int(np.argmax([mappls.route_min_distance_to(r["coords"], blocked_coord) for r in routes]))
         for i, r in enumerate(routes):
             lats = [c[0] for c in r["coords"]]; lons = [c[1] for c in r["coords"]]
-            avoid = mappls.route_min_distance_to(r["coords"], blocked_coord)
-            name = f"Route {i+1} (Bypass)" + (" RECOMMENDED" if i == best_i else "")
+            name = f"Bypass Route {i+1}" + (" (RECOMMENDED)" if i == best_i else "")
             fig.add_trace(go.Scattermapbox(lat=lats, lon=lons, mode="lines",
                           line=dict(width=6 if i == best_i else 3),
                           name=name))
     else:
-        fig.add_trace(go.Scattermapbox(lat=[origin_coord[0], dest_coord[0]], lon=[origin_coord[1], dest_coord[1]],
-                      mode="lines", line=dict(width=4, color="gray"), name="straight-line detour"))
-                      
+        # Fallback straight-line bypasses via waypoints (avoiding going straight through the red dot)
+        fig.add_trace(go.Scattermapbox(
+            lat=[origin_coord[0], waypoint_1[0], dest_coord[0]],
+            lon=[origin_coord[1], waypoint_1[1], dest_coord[1]],
+            mode="lines", line=dict(width=4, color="blue"), name="Bypass Route 1 (RECOMMENDED)"
+        ))
+        fig.add_trace(go.Scattermapbox(
+            lat=[origin_coord[0], waypoint_2[0], dest_coord[0]],
+            lon=[origin_coord[1], waypoint_2[1], dest_coord[1]],
+            mode="lines", line=dict(width=3, color="gray", dash="dash"), name="Bypass Route 2"
+        ))
+                       
     fig.add_trace(go.Scattermapbox(lat=[blocked_coord[0]], lon=[blocked_coord[1]], mode="markers",
                   marker=dict(size=18, color="red"), name="Incident Spot"))
     fig.add_trace(go.Scattermapbox(lat=[origin_coord[0]], lon=[origin_coord[1]], mode="markers",
@@ -853,6 +885,7 @@ elif PAGE == "Public Diversion Advisory":
         mapbox=dict(center=dict(lat=blocked_coord[0], lon=blocked_coord[1]), zoom=12.5),
         margin=dict(l=0, r=0, t=0, b=0), legend=dict(orientation="h", y=1.02))
     st.plotly_chart(fig, use_container_width=True)
+
 
 # =========================================================================== #
 #  6 · CONFLICT + DISPATCH
