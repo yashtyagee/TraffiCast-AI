@@ -16,6 +16,12 @@ Forecast event-related traffic impact → recommend optimal **manpower, barricad
 
 ---
 
+## 🚀 Quick Run Instructions for Reviewers
+
+To run and test the TraffiCast AI project locally, start by installing the required dependencies from the project root using the command `pip install -r requirements.txt`. Next, ensure that the provided event log dataset is placed at the path `data/astram_event_data.csv` (or customize the location using the `TRAFFICAST_CSV` environment variable). Finally, spin up the Streamlit server by executing `streamlit run app.py` in your terminal. Upon the first launch, the training pipeline will run automatically to train the LightGBM models (which takes approximately 20 seconds) and cache the serialized model bundle inside the `artifacts/` directory; subsequent starts will load instantly. You can then open your web browser and navigate to `http://localhost:8501` to test the various dashboards, maps, and predictive models.
+
+---
+
 ## 🌟 The Solution: Overview
 
 **TraffiCast AI** is a decision-support command center designed for the Bengaluru Traffic Police. By translating historical event incident reports into actionable operational directives, TraffiCast AI prevents gridlocks before they form.

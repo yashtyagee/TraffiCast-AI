@@ -126,6 +126,7 @@ def load_raw(csv_path: str) -> pd.DataFrame:
 
 def fe(f: pd.DataFrame) -> pd.DataFrame:
     f = f.copy()
+    f = f.dropna(subset=['start']).copy()
     f['hour'] = f['start'].dt.hour; f['dow'] = f['start'].dt.dayofweek
     f['month'] = f['start'].dt.month; f['dom'] = f['start'].dt.day
     f['woy'] = f['start'].dt.isocalendar().week.astype('int64')
@@ -592,12 +593,16 @@ def retrain_with_feedback(csv_path: str, feedback_path: str, artifacts_dir: str)
                 fdf['end_best'] = pd.to_datetime(fdf['resolved_datetime'], errors='coerce', utc=True)
                 fdf['duration_min'] = (fdf['end_best'] - fdf['start']).dt.total_seconds() / 60
                 
+                # Drop invalid feedback rows where start is null
+                fdf = fdf.dropna(subset=['start']).copy()
+                
                 # Append feedback events to original dataset
                 df = pd.concat([df, fdf], ignore_index=True)
         except Exception:
             pass
             
     # Retrain everything
+    df = df.dropna(subset=['start']).copy()
     bundle = train_all(df)
     try:
         save_bundle(bundle, artifacts_dir)
