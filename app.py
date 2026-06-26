@@ -56,6 +56,31 @@ def get_scored(_bundle_ver):
 def get_raw_fe():
     return M.fe(get_data())
 
+@st.cache_data(show_spinner="Computing waterlogging clusters…")
+def get_waterlogging_clusters(water_df):
+    GEO = water_df.dropna(subset=['latitude','longitude']).copy()
+    if len(GEO) > 10:
+        coords = np.radians(GEO[['latitude','longitude']].values)
+        GEO['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(coords)
+        return (GEO[GEO.cluster>=0].groupby('cluster')
+               .agg(events=('id','size'), lat=('latitude','mean'), lon=('longitude','mean'))
+               .reset_index())
+    return pd.DataFrame()
+
+@st.cache_data(show_spinner="Computing accident/breakdown risk hotspots…")
+def get_crane_clusters(bd_df):
+    bd_geo = bd_df.dropna(subset=['latitude', 'longitude']).copy()
+    if len(bd_geo) > 5:
+        bd_coords = np.radians(bd_geo[['latitude', 'longitude']].values)
+        bd_geo['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(bd_coords)
+        bd_clusters = bd_geo[bd_geo.cluster >= 0]
+        if not bd_clusters.empty:
+            hot_bd = (bd_clusters.groupby('cluster')
+                      .agg(events=('id', 'size'), lat=('latitude', 'mean'), lon=('longitude', 'mean'))
+                      .reset_index())
+            return hot_bd.sort_values('events', ascending=False)
+    return pd.DataFrame()
+
 try:
     bundle = get_bundle()
     raw = get_data()
@@ -289,6 +314,9 @@ def detect_conflicts(df, max_dist_km=3.0):
         
         # Convert group to list of dicts for extremely fast iteration
         group_events = group_df.to_dict('records')
+        for idx, r in enumerate(group_events):
+            if 'id' not in r:
+                r['id'] = r.get('incident_id', f"row_{idx}")
         visited = set()
         
         for i, r1 in enumerate(group_events):
@@ -318,7 +346,7 @@ def detect_conflicts(df, max_dist_km=3.0):
         compounded_eis = min(100.0, round(eiss_sorted[0] + 0.4 * sum(eiss_sorted[1:]), 1))
         centroid_lat = np.mean(lats)
         centroid_lon = np.mean(lons)
-        total_off = sum(int(np.ceil(e / 20)) for e in eiss)
+        total_off = sum(M.recommend_officers(r['impact_score'], r.get('event_cause', 'others')) for r in group)
         merged_off = max(1, int(np.ceil(total_off * 0.8)))
         
         # Merged barricades
@@ -381,7 +409,7 @@ if PAGE == "Command Center":
 
         with st.expander("🔍 Filters", expanded=True):
             f1, f2, f3 = st.columns(3)
-            sel_tier = f1.multiselect("Impact tier", list(TIER_COLOR), default=["CRITICAL", "HIGH"])
+            sel_tier = f1.multiselect("Impact tier", list(TIER_COLOR), default=[])
             sel_cause = f2.multiselect("Cause", CAUSES, default=[])
             sel_zone = f3.multiselect("Zone", ZONES, default=[])
 
@@ -457,7 +485,7 @@ if PAGE == "Command Center":
                 m2.metric("Closure Prob", f"{selected_event.closure_prob:.0%}")
                 
                 # Recommended manpower
-                need_off = int(np.ceil(selected_event.impact_score / 20))
+                need_off = M.recommend_officers(selected_event.impact_score, selected_event.get('event_cause', 'others'))
                 st.markdown(f"**Suggested Deployment**: 🚓 `{need_off}` Officers | 🚧 `{'Required' if selected_event.closure_prob > 0.5 else 'None'}` Barricades")
                 
                 # SHAP bar chart for this event
@@ -548,15 +576,9 @@ if PAGE == "Command Center":
                 name="Waterlogging Incident"
             ))
             
-            GEO = water_df.dropna(subset=['latitude','longitude']).copy()
-            if len(GEO) > 10:
-                coords = np.radians(GEO[['latitude','longitude']].values)
-                GEO['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(coords)
-                hot = (GEO[GEO.cluster>=0].groupby('cluster')
-                       .agg(events=('id','size'), lat=('latitude','mean'), lon=('longitude','mean'))
-                       .reset_index())
-                
-                if not hot.empty:
+            hot = get_waterlogging_clusters(water_df)
+            
+            if not hot.empty:
                     fig_water.add_trace(go.Scattermapbox(
                         lat=hot['lat'].tolist(),
                         lon=hot['lon'].tolist(),
@@ -596,12 +618,15 @@ elif PAGE == "Simulate Event (What-if)":
         cause = b2.selectbox("Cause", CAUSES, index=CAUSES.index("public_event") if "public_event" in CAUSES else 0)
         prio = c.selectbox("Priority", ["High", "Low"])
         d, e, f = st.columns(3)
-        corridor = d.selectbox("Corridor", ["unknown"] + CORRIDORS)
-        zone = e.selectbox("Zone", ["unknown"] + ZONES)
-        pstation = f.selectbox("Police station", ["unknown"] + PSTATIONS)
+        corridor = d.selectbox("Corridor", ["unknown"] + CORRIDORS,
+            index=(["unknown"] + CORRIDORS).index("ORR East 1") if "ORR East 1" in CORRIDORS else 0)
+        zone = e.selectbox("Zone", ["unknown"] + ZONES,
+            index=(["unknown"] + ZONES).index("South Zone 2") if "South Zone 2" in ZONES else 0)
+        pstation = f.selectbox("Police station", ["unknown"] + PSTATIONS,
+            index=(["unknown"] + PSTATIONS).index("HSR Layout") if "HSR Layout" in PSTATIONS else 0)
         g, h, i = st.columns(3)
-        lat = g.number_input("Latitude", value=12.9716, format="%.5f")
-        lon = h.number_input("Longitude", value=77.5946, format="%.5f")
+        lat = g.number_input("Latitude", value=12.9176, format="%.5f")
+        lon = h.number_input("Longitude", value=77.6237, format="%.5f")
         when = i.text_input("Start datetime (ISO)", value="2024-05-01T18:30:00Z")
         desc = st.text_input("Description", value="gathering expected near junction")
         go_btn = st.form_submit_button("🔮 Forecast & recommend", use_container_width=True)
@@ -1120,27 +1145,15 @@ elif PAGE == "Conflict + Dispatch":
             st.dataframe(corr_risk.style.format({"Avg Clearance (min)": "{:.1f}", "Road Closure Rate": "{:.1%}"}), use_container_width=True)
             
             # DBSCAN to predict / locate the highest accident risk point
-            bd_geo = bd_df.dropna(subset=['latitude', 'longitude']).copy()
             pred_lat, pred_lon = None, None
             pred_events_count = 0
-            hot_bd = pd.DataFrame()
+            hot_bd = get_crane_clusters(bd_df)
             
-            if len(bd_geo) > 5:
-                bd_coords = np.radians(bd_geo[['latitude', 'longitude']].values)
-                # 500m radius
-                bd_geo['cluster'] = DBSCAN(eps=0.5/6371, min_samples=3, metric='haversine').fit_predict(bd_coords)
-                
-                bd_clusters = bd_geo[bd_geo.cluster >= 0]
-                if not bd_clusters.empty:
-                    hot_bd = (bd_clusters.groupby('cluster')
-                              .agg(events=('id', 'size'), lat=('latitude', 'mean'), lon=('longitude', 'mean'))
-                              .reset_index())
-                    hot_bd = hot_bd.sort_values('events', ascending=False)
-                    
-                    top_cluster = hot_bd.iloc[0]
-                    pred_lat = top_cluster['lat']
-                    pred_lon = top_cluster['lon']
-                    pred_events_count = int(top_cluster['events'])
+            if not hot_bd.empty:
+                top_cluster = hot_bd.iloc[0]
+                pred_lat = top_cluster['lat']
+                pred_lon = top_cluster['lon']
+                pred_events_count = int(top_cluster['events'])
                     
             if pred_lat is None or pred_lon is None:
                 pred_lat = bd_df['latitude'].mean()
@@ -1420,19 +1433,16 @@ elif PAGE == "Astram Query Center":
                  .query("count>=15").sort_values("mean", ascending=False).head(10))
             t.columns = ["closure_rate", "events"]
             fig = px.bar(t, y="closure_rate", title="Road Closure Rate by Corridor", labels={"closure_rate": "Closure Probability"})
-            fig.update_layout(mapbox_style="carto-positron")
             st.plotly_chart(fig, use_container_width=True)
             ans = f"**{t.index[0]}** has the highest road closure rate ({t['closure_rate'].iloc[0]:.0%}) among key corridors."
         elif "zone" in ql and ("compare" in ql or "risk" in ql or "profile" in ql):
             t = scored.groupby("zone")["impact_score"].mean().sort_values(ascending=False)
             fig = px.bar(t, title="Average Incident Impact Score by Traffic Zone", labels={"value": "Mean Impact Score"})
-            fig.update_layout(mapbox_style="carto-positron")
             st.plotly_chart(fig, use_container_width=True)
             ans = f"**{t.index[0]}** shows the highest average incident impact ({t.iloc[0]:.1f}/100)."
         elif "contagious" in ql or "spread" in ql or "hour" in ql:
             t = get_raw_fe().groupby("hour")["requires_road_closure"].mean()
             fig = px.line(t, title="Incident Closure Risk Profile by Hour of Day", labels={"value": "Closure Likelihood"})
-            fig.update_layout(mapbox_style="carto-positron")
             st.plotly_chart(fig, use_container_width=True)
             ans = "Gridlock spreading rate peaks during evening rush hours (5-8 PM) when base load matches high traffic density."
         elif "diversion" in ql or ("cause" in ql and "3h" not in ql):
@@ -1467,6 +1477,43 @@ elif PAGE == "Astram Query Center":
 elif PAGE == "Post-Event Learning":
     st.title("Post-Event Learning Loop")
     st.caption("Log what actually happened → track accuracy → retrain. The system improves with every event.")
+
+    if st.session_state.get('just_retrained'):
+        st.session_state['just_retrained'] = False
+        prev_c = st.session_state.get('prev_auc_closure', 0.0)
+        prev_l = st.session_state.get('prev_auc_longblock', 0.0)
+        curr_c = bundle['closure']['auc']
+        curr_l = bundle['longblock']['auc']
+        
+        diff_c = curr_c - prev_c
+        diff_l = curr_l - prev_l
+        
+        st.balloons()
+        st.markdown(
+            f"""
+            <div style="background-color: #0f172a; padding: 20px; border-radius: 12px; border: 2px solid #22c55e; margin-bottom: 25px;">
+                <h3 style="color: #22c55e; margin-top: 0;">🚀 Model Retraining Complete!</h3>
+                <p style="color: #94a3b8; font-size: 14px;">The feedback loop has successfully closed. The system has updated the underlying machine learning estimators with the newly logged post-event data. Here are the updated live validation metrics on the temporal test set:</p>
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1; background: #1e293b; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #334155;">
+                        <div style="color: #94a3b8; font-size: 12px; font-weight: 600;">Closure Model AUC</div>
+                        <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin: 4px 0;">{curr_c:.4f}</div>
+                        <div style="font-size: 12px; color: {'#22c55e' if diff_c >= 0 else '#ef4444'}; font-weight: 600;">
+                            {'▲' if diff_c >= 0 else '▼'} {abs(diff_c):.4f} (was {prev_c:.4f})
+                        </div>
+                    </div>
+                    <div style="flex: 1; background: #1e293b; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #334155;">
+                        <div style="color: #94a3b8; font-size: 12px; font-weight: 600;">Long-Blocker Model AUC</div>
+                        <div style="font-size: 24px; font-weight: 800; color: #f8fafc; margin: 4px 0;">{curr_l:.4f}</div>
+                        <div style="font-size: 12px; color: {'#22c55e' if diff_l >= 0 else '#ef4444'}; font-weight: 600;">
+                            {'▲' if diff_l >= 0 else '▼'} {abs(diff_l):.4f} (was {prev_l:.4f})
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
     st.subheader("Log an outcome")
     with st.form("fb"):
@@ -1567,6 +1614,11 @@ elif PAGE == "Post-Event Learning":
             st.caption("Train new LightGBM models incorporating the logged post-event outcomes above.")
             if st.button("Retrain Models Now", use_container_width=True):
                 with st.spinner("Retraining LightGBM models on historical + logged outcomes..."):
+                    # Save before metrics in session state
+                    st.session_state['prev_auc_closure'] = bundle['closure']['auc']
+                    st.session_state['prev_auc_longblock'] = bundle['longblock']['auc']
+                    st.session_state['just_retrained'] = True
+                    
                     new_bundle = M.retrain_with_feedback(DATA_PATH, FEEDBACK, ARTIFACTS)
                     # Clear st cache to reload
                     st.cache_resource.clear()
@@ -1653,7 +1705,7 @@ elif PAGE == "Model Trust & Performance":
             "resource need* — fully supported by the provided incident data — instead of fabricating "
             "road-flow telemetry the dataset doesn't contain. Exact-minute duration is intrinsically "
             "noisy here (admin auto-close), so we reframed it as the decision-relevant 'blocks >3h?' "
-            "question, which is far more accurate (AUC 0.86) and now additionally supplemented with "
+            "question, which is far more accurate (AUC 0.84) and now additionally supplemented with "
             "a continuous Duration Regressor to estimate actual clearance minutes.")
     st.caption(f"Models trained {bundle['trained_at']} UTC · backend {bundle['backend']} · "
                f"{bundle['n_events']:,} events.")

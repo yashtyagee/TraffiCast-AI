@@ -28,7 +28,7 @@ To run and test the TraffiCast AI project locally, start by installing the requi
 
 ### Why TraffiCast AI? (Design Honesty)
 Unlike traditional navigation systems that rely on real-time vehicle GPS telemetry, the provided dataset contains **event incident reports** (accidents, VIP movements, rallies, breakdowns). TraffiCast AI aligns with this data structure by forecasting **event-related impact, duration, and resource requirements** instead of fabricating traffic flow rates.
-- **Reframed Target Questions**: Predicting exact-minute durations is noisy due to administrative auto-close patterns. We reframed the classification to focus on the decision-relevant question: **"Will this block the road for more than 3 hours?"** (resulting in a highly robust model with **ROC-AUC ≈ 0.86**).
+- **Reframed Target Questions**: Predicting exact-minute durations is noisy due to administrative auto-close patterns. We reframed the classification to focus on the decision-relevant question: **"Will this block the road for more than 3 hours?"** (resulting in a highly robust model with **ROC-AUC ≈ 0.84**).
 - **Temporal Train/Test Split**: Models are validated using a strict chronological 80/20 split (train on earlier events, test on later events) to prevent data leakage.
 - **Adoption-First Design**: Every model prediction is explainable via local feature contributions (SHAP-style explanations), allowing officers to trust and audit the machine learning logic.
 
@@ -38,8 +38,8 @@ Unlike traditional navigation systems that rely on real-time vehicle GPS telemet
 
 The backend (`model.py`) trains a set of highly optimized gradient-boosted trees utilizing **LightGBM** (with a fallback to scikit-learn's **HistGradientBoosting** if LightGBM is not installed):
 
-1. **Closure Classifier (`closure_clf`)**: Predicts the probability that an event will require a full or partial road closure. **(ROC-AUC ≈ 0.82)**
-2. **Long-Blocker Classifier (`longblock_clf`)**: Predicts the probability that an event will block the road for more than 180 minutes. **(ROC-AUC ≈ 0.86)**
+1. **Closure Classifier (`closure_clf`)**: Predicts the probability that an event will require a full or partial road closure. **(ROC-AUC ≈ 0.78)**
+2. **Long-Blocker Classifier (`longblock_clf`)**: Predicts the probability that an event will block the road for more than 180 minutes. **(ROC-AUC ≈ 0.84)**
 3. **Severity Classifier (`severity_clf`)**: Predicts clearance severity (short / medium / long) using multi-class classification. **(Accuracy ≈ 76%)**
 4. **Duration Regressor (`duration_reg`)**: Continuous regression model estimating the actual incident clearance duration in minutes.
 

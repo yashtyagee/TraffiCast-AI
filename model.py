@@ -7,8 +7,8 @@ Reused by the Streamlit app (app.py) and the Colab notebook.
 
 Models
 ------
-1. closure_clf   : P(road closure required)            ROC-AUC ~0.82
-2. longblock_clf : P(blocks road > 180 min)            ROC-AUC ~0.86
+1. closure_clf   : P(road closure required)            ROC-AUC ~0.78
+2. longblock_clf : P(blocks road > 180 min)            ROC-AUC ~0.84
 3. severity_clf  : short / medium / long clearance     ~76% acc
 
 Plus: DBSCAN hotspots, zone x weekday load profile, surge detector,
@@ -63,6 +63,18 @@ NUM = (['hour','dow','month','dom','woy','is_weekend','is_night','hour_sin','hou
 
 HOT_CAUSES = {'vip_movement':1.0,'public_event':.9,'protest':.9,'procession':.8,
               'tree_fall':.7,'construction':.6,'accident':.6}
+
+# Geographic & Manpower Helpers
+def haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    dlat = np.radians(lat2 - lat1)
+    dlon = np.radians(lon2 - lon1)
+    a = np.sin(dlat / 2.0)**2 + np.cos(np.radians(lat1)) * np.cos(np.radians(lat2)) * np.sin(dlon / 2.0)**2
+    return 2.0 * R * np.arcsin(np.sqrt(a))
+
+def recommend_officers(score, cause):
+    hot_weight = HOT_CAUSES.get(str(cause), 0.4)
+    return max(1, int(np.ceil((score / 20.0) * (0.8 + 1.2 * hot_weight))))
 
 # Human-readable labels for features in explainability charts
 FEAT_LABELS = {
@@ -494,7 +506,7 @@ def tier_of(score):
 def recommend(closure_p, longblock_p, sev, predicted_duration, density, cause):
     sc = impact_score(closure_p, longblock_p, sev, predicted_duration, density, cause)
     return dict(impact_score=sc, tier=tier_of(sc),
-                officers=int(np.ceil(sc/20)),
+                officers=recommend_officers(sc, cause),
                 barricades=int(np.ceil(closure_p*8)) if closure_p > 0.3 else 0,
                 set_diversion=bool(longblock_p > 0.5 or closure_p > 0.5),
                 pre_position_crane=bool(longblock_p > 0.6))
@@ -504,9 +516,10 @@ def allocate(ev_df: pd.DataFrame, pool: int = 40) -> pd.DataFrame:
     e = ev_df.sort_values('impact_score', ascending=False).copy()
     p = pool; assigned = []; gap = []
     for _, r in e.iterrows():
-        need = int(np.ceil(r['impact_score']/20))
+        need = recommend_officers(r['impact_score'], r.get('event_cause', 'others'))
         give = min(need, p); assigned.append(give); gap.append(need-give); p = max(p-give, 0)
-    e['officers_needed'] = [int(np.ceil(s/20)) for s in e['impact_score']]
+    causes = e['event_cause'] if 'event_cause' in e.columns else ['others'] * len(e)
+    e['officers_needed'] = [recommend_officers(s, c) for s, c in zip(e['impact_score'], causes)]
     e['officers_assigned'] = assigned; e['shortfall'] = gap
     return e
 
@@ -514,7 +527,7 @@ def allocate(ev_df: pd.DataFrame, pool: int = 40) -> pd.DataFrame:
 #  Surge detector (tuned: 6h windows, abs floor)
 # ----------------------------------------------------------------------------
 def surge_scan(df, zone, window_hours=6, lookback_days=14, z=3.0, min_count=4):
-    sub = df[df.get('zone') == zone].copy()
+    sub = df[df['zone'] == zone].copy()
     if sub.empty: return pd.DataFrame(columns=['window','count','expected','z'])
     s = (sub.assign(w=sub['start'].dt.floor(f'{window_hours}h'))
             .groupby('w').size().asfreq(f'{window_hours}h', fill_value=0))
@@ -626,7 +639,7 @@ def query_upstream_risk_buffer(lat: float, lon: float, raw_df: pd.DataFrame, max
     df = df.dropna(subset=['latitude', 'longitude'])
     
     # Calculate distance to selected point
-    df['distance_km'] = np.sqrt((df['latitude'] - lat)**2 + (df['longitude'] - lon)**2) * 111.0
+    df['distance_km'] = haversine_km(df['latitude'], df['longitude'], lat, lon)
     nearby = df[df['distance_km'] <= max_dist_km].copy()
     
     near_miss_count = len(nearby)
@@ -728,13 +741,13 @@ def nearest_hub_dispatch(active_events: list[dict], stations_dict: dict, total_o
     
     for ev in sorted_events:
         score = ev.get("impact_score", 20)
-        needed = max(1, int(np.ceil(score / 20)))
+        needed = recommend_officers(score, ev.get("event_cause", "others"))
         assigned = 0
         ev_lat = float(ev.get("latitude", CLAT))
         ev_lon = float(ev.get("longitude", CLON))
         
         def dist_to_ev(stn):
-            return np.sqrt((stn["lat"] - ev_lat)**2 + (stn["lon"] - ev_lon)**2) * 111.0
+            return haversine_km(stn["lat"], stn["lon"], ev_lat, ev_lon)
             
         sorted_stations = sorted([s for s in stations if s["pool"] > 0], key=dist_to_ev)
         
@@ -817,7 +830,8 @@ def get_playbook_data(cause: str, df: pd.DataFrame) -> dict:
     closure_rate = float(sub['requires_road_closure'].mean())
     top_corridors = sub['corridor'].value_counts().head(5).index.tolist()
     
-    rec_officers = int(np.ceil(p50 / 25.0 + closure_rate * 4.0))
+    hot_weight = HOT_CAUSES.get(str(cause), 0.4)
+    rec_officers = int(np.ceil((p50 / 25.0 + closure_rate * 4.0) * (0.8 + 1.2 * hot_weight)))
     rec_barricades = int(np.ceil(closure_rate * 12)) if closure_rate > 0.1 else 0
     
     desc = sub['description'].fillna('').astype(str).str.lower()
@@ -852,8 +866,9 @@ def get_counterfactuals(ev: dict, bundle: dict) -> dict:
         dur_crane_diff = round(base_dur * 0.056, 1)
         close_crane_diff = round(base_close * 0.05, 3)
     else:
-        dur_crane_diff = 0.0
-        close_crane_diff = 0.0
+        # Soft traffic management effect for all causes
+        dur_crane_diff = round(base_dur * 0.02, 1)  # 2% minimum
+        close_crane_diff = round(base_close * 0.02, 3)
         
     # 2. Early Upstream Diversions: Calculate impact by assuming road closure is bypassed
     ev_div = ev.copy()
@@ -912,7 +927,7 @@ def find_similar_events(ev: dict, raw_df: pd.DataFrame, top_k: int = 5) -> list[
     if len(sub) < top_k:
         sub = clean_df
         
-    sub["distance_km"] = np.sqrt((sub["latitude"] - lat)**2 + (sub["longitude"] - lon)**2) * 111.0
+    sub["distance_km"] = haversine_km(sub["latitude"], sub["longitude"], lat, lon)
     matches = sub.sort_values("distance_km").head(top_k)
 
     
